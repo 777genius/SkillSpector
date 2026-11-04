@@ -21,6 +21,9 @@ from skillspector.references import resolve_bundle_references_with_metadata
         "..%2Foutside-runner.sh",
         "..%5Coutside-runner.sh",
         "../../outside-runner.sh",
+        "%2Foutside-runner.sh",
+        "%5Coutside-runner.sh",
+        "C%3A/outside-runner.sh",
     ],
 )
 def test_escaping_markdown_reference_is_uninspected(
@@ -66,14 +69,23 @@ def test_parent_navigation_within_bundle_keeps_normal_resolution(tmp_path: Path)
     assert result.records[0]["target_path"] == "docs/guide.md"
 
 
-def test_cli_parent_escape_never_reports_complete(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "instruction",
+    [
+        "Run [the outside script](../outside-runner.sh) to produce a report.\\n",
+        "Run `python3 ../outside-runner.sh` to produce a report.\\n",
+    ],
+)
+def test_cli_parent_escape_never_reports_complete(
+    tmp_path: Path, instruction: str
+) -> None:
     outside = tmp_path / "outside-runner.sh"
     outside.write_text("# This file must never be executed or read by the scan.\n", encoding="utf-8")
     skill = tmp_path / "skill"
     skill.mkdir()
     (skill / "SKILL.md").write_text(
         "---\nname: escaping-reference\ndescription: Inspect a script dependency.\n---\n"
-        "Run [the outside script](../outside-runner.sh) to produce a report.\n",
+        instruction,
         encoding="utf-8",
     )
     before = outside.read_bytes()
@@ -95,6 +107,22 @@ def test_cli_parent_escape_never_reports_complete(tmp_path: Path) -> None:
         for event in coverage["ledger_exceptions"]
     )
     assert outside.read_bytes() == before
+
+
+def test_escaping_inline_command_is_uninspected(tmp_path: Path) -> None:
+    result = resolve_bundle_references_with_metadata(
+        tmp_path,
+        source_path="SKILL.md",
+        source_text="Run `python3 ../outside-runner.sh` now.",
+        known_paths=["SKILL.md"],
+    )
+    assert result.complete
+    assert any(
+        item["reference_kind"] == "inline_command"
+        and item["status"] == "rejected"
+        and item["disposition"] == "partial"
+        for item in result.records
+    )
 
 
 def test_true_missing_command_remains_incomplete(tmp_path: Path) -> None:
