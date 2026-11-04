@@ -72,8 +72,8 @@ def test_parent_navigation_within_bundle_keeps_normal_resolution(tmp_path: Path)
 @pytest.mark.parametrize(
     "instruction",
     [
-        "Run [the outside script](../outside-runner.sh) to produce a report.\\n",
-        "Run `python3 ../outside-runner.sh` to produce a report.\\n",
+        "Run [the outside script](../outside-runner.sh) to produce a report.\n",
+        "Run `python3 ../outside-runner.sh` to produce a report.\n",
     ],
 )
 def test_cli_parent_escape_never_reports_complete(
@@ -85,7 +85,7 @@ def test_cli_parent_escape_never_reports_complete(
     skill.mkdir()
     (skill / "SKILL.md").write_text(
         "---\nname: escaping-reference\ndescription: Inspect a script dependency.\n---\n"
-        instruction,
+        + instruction,
         encoding="utf-8",
     )
     before = outside.read_bytes()
