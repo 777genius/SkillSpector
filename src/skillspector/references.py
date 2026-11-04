@@ -649,8 +649,14 @@ def _escapes_bundle_root(raw: str, source_path: str) -> bool:
     if split.scheme or split.netloc:
         return False
     path_part = unquote(split.path).replace("\\", "/")
-    if not path_part or path_part.startswith("/"):
+    if not path_part:
         return False
+    # Encoded absolute and drive-prefixed local files are outside the bundle.
+    # Ordinary site-root Markdown links remain out of scope.
+    if path_part.startswith("/"):
+        return not split.path.startswith("/")
+    if len(path_part) >= 2 and path_part[1] == ":":
+        return True
     joined = posixpath.normpath(
         posixpath.join(PurePosixPath(source_path).parent.as_posix(), path_part)
     )
@@ -766,7 +772,7 @@ def resolve_bundle_references_with_metadata(
         # not a completed scan. Preserve the public rejected status.
         disposition = (
             ArtifactDisposition.PARTIAL
-            if reference_kind is ReferenceKind.MARKDOWN_LINK
+            if reference_kind in {ReferenceKind.MARKDOWN_LINK, ReferenceKind.INLINE_COMMAND}
             and target is None
             and _escapes_bundle_root(raw, source_path)
             else ArtifactDisposition.OUT_OF_SCOPE
