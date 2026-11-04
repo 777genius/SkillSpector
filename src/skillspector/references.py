@@ -639,6 +639,24 @@ def _normalize_candidate(raw: str, source_path: str) -> str | None:
     return joined.removeprefix("./")
 
 
+def _escapes_bundle_root(raw: str, source_path: str) -> bool:
+    """Detect a relative link that lexically escapes the inspected bundle.
+
+    Remote URLs and fragments are not local file dependencies. Decode once,
+    matching the normal resolver, without probing the external filesystem.
+    """
+    split = urlsplit(raw.strip())
+    if split.scheme or split.netloc:
+        return False
+    path_part = unquote(split.path).replace("\\", "/")
+    if not path_part or path_part.startswith("/"):
+        return False
+    joined = posixpath.normpath(
+        posixpath.join(PurePosixPath(source_path).parent.as_posix(), path_part)
+    )
+    return joined == ".." or joined.startswith("../")
+
+
 def documentation_image_provenance(
     source_path: str,
     source_bytes: bytes,
@@ -744,7 +762,15 @@ def resolve_bundle_references_with_metadata(
             break
         target = _normalize_candidate(raw, source_path)
         status = "rejected"
-        disposition = ArtifactDisposition.OUT_OF_SCOPE
+        # Rejected local parent traversal is an *uninspected dependency*,
+        # not a completed scan. Preserve the public rejected status.
+        disposition = (
+            ArtifactDisposition.PARTIAL
+            if reference_kind is ReferenceKind.MARKDOWN_LINK
+            and target is None
+            and _escapes_bundle_root(raw, source_path)
+            else ArtifactDisposition.OUT_OF_SCOPE
+        )
         resolved_target: str | None = None
         if target is not None:
             # Resolution is intentionally confined to the caller's already
