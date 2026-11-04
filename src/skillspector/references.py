@@ -75,6 +75,8 @@ _DOCUMENTATION_IMAGE_DECLARATION = re.compile(
 _INLINE_CODE_COMMAND_PATH = re.compile(
     r"`(?:python(?:\d+(?:\.\d+)*)?|py|node|deno|bun|bash|sh|zsh|fish|ruby|perl|php|"
     r"pwsh|powershell)\b[ \t]+"
+    # Bound known interpreter switches; never parse eval -c/-e operands as scripts.
+    r"(?:(?:-u|-B|-I|-S|-E|-s|-v|-O|-OO|--)[ \t]+){0,2}"
     r"((?:\./)?(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+)(?![\w/.-])"
 )
 _DOTTED_IDENTIFIER = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", re.ASCII)
@@ -647,7 +649,7 @@ def _escapes_bundle_root(raw: str, source_path: str) -> bool:
     """
     # urlsplit treats a local Windows drive as a URL scheme. Such a path
     # cannot belong to the acquired bundle and is not a remote documentation URL.
-    if re.match(r"^[A-Za-z]:[/\\]", raw.strip()):
+    if re.match(r"^[A-Za-z]:", raw.strip()):
         return True
     split = urlsplit(raw.strip())
     # file: identifies a local resource outside our acquired inventory.

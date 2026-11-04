@@ -25,6 +25,7 @@ from skillspector.references import resolve_bundle_references_with_metadata
         "%5Coutside-runner.sh",
         "C%3A/outside-runner.sh",
         "C:/outside-runner.sh",
+        "C:../outside-runner.sh",
         "file:///outside-runner.sh",
         "file://localhost/outside-runner.sh",
     ],
@@ -77,6 +78,7 @@ def test_parent_navigation_within_bundle_keeps_normal_resolution(tmp_path: Path)
     [
         "Run [the outside script](../outside-runner.sh) to produce a report.\n",
         "Run `python3 ../outside-runner.sh` to produce a report.\n",
+        "Run `python3 -u ../outside-runner.sh` to produce a report.\n",
         "Run [the outside script]({outside_uri}) to produce a report.\n",
     ],
 )
@@ -113,11 +115,16 @@ def test_cli_parent_escape_never_reports_complete(
     assert outside.read_bytes() == before
 
 
-def test_escaping_inline_command_is_uninspected(tmp_path: Path) -> None:
+@pytest.mark.parametrize("body", [
+    "Run `python3 ../outside-runner.sh` now.",
+    "Run `python3 -u ../outside-runner.sh` now.",
+    "Run `bash -- ../outside-runner.sh` now.",
+])
+def test_escaping_inline_command_is_uninspected(tmp_path: Path, body: str) -> None:
     result = resolve_bundle_references_with_metadata(
         tmp_path,
         source_path="SKILL.md",
-        source_text="Run `python3 ../outside-runner.sh` now.",
+        source_text=body,
         known_paths=["SKILL.md"],
     )
     assert result.complete
