@@ -645,6 +645,10 @@ def _escapes_bundle_root(raw: str, source_path: str) -> bool:
     Remote URLs and fragments are not local file dependencies. Decode once,
     matching the normal resolver, without probing the external filesystem.
     """
+    # urlsplit treats a local Windows drive as a URL scheme. Such a path
+    # cannot belong to the acquired bundle and is not a remote documentation URL.
+    if re.match(r"^[A-Za-z]:[/\\]", raw.strip()):
+        return True
     split = urlsplit(raw.strip())
     if split.scheme or split.netloc:
         return False

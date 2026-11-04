@@ -24,6 +24,7 @@ from skillspector.references import resolve_bundle_references_with_metadata
         "%2Foutside-runner.sh",
         "%5Coutside-runner.sh",
         "C%3A/outside-runner.sh",
+        "C:/outside-runner.sh",
     ],
 )
 def test_escaping_markdown_reference_is_uninspected(
