@@ -2925,6 +2925,23 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
             for reference in references
             if reference["status"] in {"missing", "ambiguous"}
         )
+        # The resolver retains rejected for parent-traversal links, but marks
+        # those outside-bundle dependencies PARTIAL. Do not silently count
+        # them as fully inspected; external URLs remain OUT_OF_SCOPE.
+        reference_events.extend(
+            ledger_event(
+                outcome=LedgerOutcome.PARTIAL,
+                record_type=LedgerRecordType.SYSTEM,
+                phase="reference_resolution",
+                path=primary_path,
+                start_line=int(reference["line"]),
+                end_line=int(reference["line"]),
+                reason=LedgerReason.REFERENCED_UNINSPECTED,
+            )
+            for reference in references
+            if reference["status"] == "rejected"
+            and reference["disposition"] == ArtifactDisposition.PARTIAL
+        )
 
     referenced_paths = frozenset(
         str(reference["target_path"])
