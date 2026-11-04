@@ -3,8 +3,12 @@
 
 """Reject escaping local references without declaring their contents inspected."""
 
+import builtins
+import io
 import json
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
@@ -95,9 +99,26 @@ def test_cli_parent_escape_never_reports_complete(
         encoding="utf-8",
     )
     before = outside.read_bytes()
-    run = CliRunner().invoke(
-        app, ["scan", str(skill), "--no-llm", "--format", "json", "--fail-on-incomplete"]
-    )
+
+    def forbid_outside_file_open(original):
+        def checked(path, *args, **kwargs):
+            # Inspect basename as well as absolute paths: os.open may receive
+            # an fd-relative filename when the caller uses dir_fd.
+            if isinstance(path, (str, bytes, os.PathLike)) and (
+                os.path.basename(os.fsdecode(path)) == outside.name
+            ):
+                raise AssertionError("Scanner opened a file outside its acquired Skill")
+            return original(path, *args, **kwargs)
+        return checked
+
+    with (
+        patch("builtins.open", side_effect=forbid_outside_file_open(builtins.open)),
+        patch("io.open", side_effect=forbid_outside_file_open(io.open)),
+        patch("os.open", side_effect=forbid_outside_file_open(os.open)),
+    ):
+        run = CliRunner().invoke(
+            app, ["scan", str(skill), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+        )
     assert run.exit_code == 1, run.output
     report = json.loads(run.stdout)
     coverage = report["analysis_completeness"]
