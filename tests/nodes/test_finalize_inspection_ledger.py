@@ -2146,6 +2146,7 @@ def _self_reference_state(
 _REFERENCE_CAVEAT_CASES = [
     pytest.param("missing", LedgerReason.REFERENCE_MISSING, id="missing"),
     pytest.param("ambiguous", LedgerReason.REFERENCE_UNRESOLVED, id="ambiguous"),
+    pytest.param("rejected", LedgerReason.REFERENCED_UNINSPECTED, id="out-of-bundle"),
 ]
 
 
@@ -2156,6 +2157,21 @@ def test_reference_caveat_does_not_make_its_source_an_ae1_target(
     state = _self_reference_state(_reference_caveat(reason), status=status)
 
     assert finalizer_module._reference_coverage_findings(state) == []
+
+
+def test_outside_dependency_remains_partial_without_self_reference_ae1() -> None:
+    state = _self_reference_state(
+        _reference_caveat(LedgerReason.REFERENCED_UNINSPECTED), status="rejected"
+    )
+    result = finalize_inspection_ledger(state)
+    assert not any(finding.rule_id == "AE1" for finding in result["findings"])
+    completeness = result["analysis_completeness"]
+    assert completeness["is_complete"] is False
+    assert completeness["status"] == "partial"
+    assert any(
+        event["reason_code"] == LedgerReason.REFERENCED_UNINSPECTED
+        for event in completeness["ledger_exceptions"]
+    )
 
 
 @pytest.mark.parametrize(("status", "reason"), _REFERENCE_CAVEAT_CASES)
@@ -2209,6 +2225,18 @@ def test_self_reference_ae1_still_reports_source_content_limitations(
             "cache",
             LedgerReason.REFERENCE_UNRESOLVED,
             id="other-phase-unresolved",
+        ),
+        pytest.param(
+            LedgerOutcome.FAILED,
+            "reference_resolution",
+            LedgerReason.REFERENCED_UNINSPECTED,
+            id="failed-uninspected",
+        ),
+        pytest.param(
+            LedgerOutcome.PARTIAL,
+            "static",
+            LedgerReason.REFERENCED_UNINSPECTED,
+            id="other-phase-uninspected",
         ),
         pytest.param(
             LedgerOutcome.PARTIAL,

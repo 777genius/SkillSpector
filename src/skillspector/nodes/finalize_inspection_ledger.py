@@ -58,7 +58,11 @@ _MAX_PASSIVE_REFERENCE_SOURCES = 16
 _MAX_PASSIVE_RASTER_PROOFS = 256
 _MAX_PASSIVE_RASTER_TOTAL_BYTES = 128 * 1024 * 1024
 _MAX_PASSIVE_RASTER_SECONDS = 2.0
-_REFERENCE_CAVEAT_REASONS = (LedgerReason.REFERENCE_MISSING, LedgerReason.REFERENCE_UNRESOLVED)
+_REFERENCE_CAVEAT_REASONS = (
+    LedgerReason.REFERENCE_MISSING,
+    LedgerReason.REFERENCE_UNRESOLVED,
+    LedgerReason.REFERENCED_UNINSPECTED,
+)
 _REFERENCE_LIMIT_FIELDS = frozenset(
     f"{prefix}_{unit}"
     for prefix in ("observed", "limit")
@@ -648,12 +652,12 @@ def _reference_coverage_findings(
             # A rule set's path is a label, not an artifact: a real file that
             # happens to share it was not inspected any less completely.
             continue
-        # Reference resolution records a mention of a path that the bundle does
-        # not carry, or that matches more than one bundled file, as a partial
-        # event on the file that contains the mention. Neither leaves bytes of
-        # that file uninspected. The completeness ledger still reports them;
-        # they must not turn a reference to that file (such as `SKILL.md`)
-        # into AE1.
+        # Reference resolution records a missing, ambiguous, or rejected
+        # dependency as partial evidence about the reference, not an unread
+        # byte range in the SKILL.md that mentioned it. Real parser/size/read
+        # limitations in any phase still count against the referenced target.
+        # The completeness ledger still reports these reasons; they must not
+        # turn a self-reference to `SKILL.md` into AE1.
         if (
             event.get("outcome") == LedgerOutcome.PARTIAL
             and event.get("phase") == "reference_resolution"
