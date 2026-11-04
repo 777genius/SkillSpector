@@ -25,6 +25,8 @@ from skillspector.references import resolve_bundle_references_with_metadata
         "%5Coutside-runner.sh",
         "C%3A/outside-runner.sh",
         "C:/outside-runner.sh",
+        "file:///outside-runner.sh",
+        "file://localhost/outside-runner.sh",
     ],
 )
 def test_escaping_markdown_reference_is_uninspected(
@@ -75,6 +77,7 @@ def test_parent_navigation_within_bundle_keeps_normal_resolution(tmp_path: Path)
     [
         "Run [the outside script](../outside-runner.sh) to produce a report.\n",
         "Run `python3 ../outside-runner.sh` to produce a report.\n",
+        "Run [the outside script]({outside_uri}) to produce a report.\n",
     ],
 )
 def test_cli_parent_escape_never_reports_complete(
@@ -86,7 +89,7 @@ def test_cli_parent_escape_never_reports_complete(
     skill.mkdir()
     (skill / "SKILL.md").write_text(
         "---\nname: escaping-reference\ndescription: Inspect a script dependency.\n---\n"
-        + instruction,
+        + instruction.format(outside_uri=outside.as_uri()),
         encoding="utf-8",
     )
     before = outside.read_bytes()

@@ -650,6 +650,10 @@ def _escapes_bundle_root(raw: str, source_path: str) -> bool:
     if re.match(r"^[A-Za-z]:[/\\]", raw.strip()):
         return True
     split = urlsplit(raw.strip())
+    # file: identifies a local resource outside our acquired inventory.
+    # No filesystem access is needed to treat it as uninspected.
+    if split.scheme.lower() == "file":
+        return bool(split.path or split.netloc)
     if split.scheme or split.netloc:
         return False
     path_part = unquote(split.path).replace("\\", "/")
