@@ -62,7 +62,7 @@ def test_named_version_preserves_explicit_numeric_file_reference(
 
 def test_named_version_only_real_cli_is_complete(tmp_path: Path) -> None:
     (tmp_path / "SKILL.md").write_text(
-        '---\nname: braids-risk\ndescription: Review risks.\nmetadata:\n'
+        "---\nname: braids-risk\ndescription: Review risks.\nmetadata:\n"
         '  methodology-version: "3.1.0"\n---\nExplain the risk.\n',
         encoding="utf-8",
     )
@@ -79,7 +79,7 @@ def test_named_version_only_real_cli_is_complete(tmp_path: Path) -> None:
 
 def test_named_version_cannot_hide_missing_executable_cli(tmp_path: Path) -> None:
     (tmp_path / "SKILL.md").write_text(
-        '---\nname: missing-script\ndescription: Check dependencies.\nmetadata:\n'
+        "---\nname: missing-script\ndescription: Check dependencies.\nmetadata:\n"
         '  methodology-version: "3.1.0"\n---\n'
         "Run `python3 scripts/emit.py` to produce the result.\n",
         encoding="utf-8",
