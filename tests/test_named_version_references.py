@@ -35,9 +35,7 @@ def test_named_version_frontmatter_is_metadata(tmp_path: Path, key: str) -> None
         '---\nname: example\n---\nmethodology-version: "3.1.0"\n',
     ],
 )
-def test_named_version_does_not_hide_other_references(
-    tmp_path: Path, text: str
-) -> None:
+def test_named_version_does_not_hide_other_references(tmp_path: Path, text: str) -> None:
     result = resolve_bundle_references_with_metadata(
         tmp_path, source_path="SKILL.md", source_text=text, known_paths=["SKILL.md"]
     )
