@@ -75,6 +75,8 @@ _DOCUMENTATION_IMAGE_DECLARATION = re.compile(
 _INLINE_CODE_COMMAND_PATH = re.compile(
     r"`(?:python(?:\d+(?:\.\d+)*)?|py|node|deno|bun|bash|sh|zsh|fish|ruby|perl|php|"
     r"pwsh|powershell)\b[ \t]+"
+    # Bound known interpreter switches; never parse eval -c/-e operands as scripts.
+    r"(?:(?:-u|-B|-I|-S|-E|-s|-v|-O|-OO|--)[ \t]+){0,2}"
     r"((?:\./)?(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+)(?![\w/.-])"
 )
 _DOTTED_IDENTIFIER = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", re.ASCII)
@@ -639,6 +641,38 @@ def _normalize_candidate(raw: str, source_path: str) -> str | None:
     return joined.removeprefix("./")
 
 
+def _escapes_bundle_root(raw: str, source_path: str) -> bool:
+    """Detect a relative link that lexically escapes the inspected bundle.
+
+    Remote URLs and fragments are not local file dependencies. Decode once,
+    matching the normal resolver, without probing the external filesystem.
+    """
+    # urlsplit treats a local Windows drive as a URL scheme. Such a path
+    # cannot belong to the acquired bundle and is not a remote documentation URL.
+    if re.match(r"^[A-Za-z]:", raw.strip()):
+        return True
+    split = urlsplit(raw.strip())
+    # file: identifies a local resource outside our acquired inventory.
+    # No filesystem access is needed to treat it as uninspected.
+    if split.scheme.lower() == "file":
+        return bool(split.path or split.netloc)
+    if split.scheme or split.netloc:
+        return False
+    path_part = unquote(split.path).replace("\\", "/")
+    if not path_part:
+        return False
+    # Encoded absolute and drive-prefixed local files are outside the bundle.
+    # Ordinary site-root Markdown links remain out of scope.
+    if path_part.startswith("/"):
+        return not split.path.startswith("/")
+    if len(path_part) >= 2 and path_part[1] == ":":
+        return True
+    joined = posixpath.normpath(
+        posixpath.join(PurePosixPath(source_path).parent.as_posix(), path_part)
+    )
+    return joined == ".." or joined.startswith("../")
+
+
 def documentation_image_provenance(
     source_path: str,
     source_bytes: bytes,
@@ -744,7 +778,15 @@ def resolve_bundle_references_with_metadata(
             break
         target = _normalize_candidate(raw, source_path)
         status = "rejected"
-        disposition = ArtifactDisposition.OUT_OF_SCOPE
+        # Rejected local parent traversal is an *uninspected dependency*,
+        # not a completed scan. Preserve the public rejected status.
+        disposition = (
+            ArtifactDisposition.PARTIAL
+            if reference_kind in {ReferenceKind.MARKDOWN_LINK, ReferenceKind.INLINE_COMMAND}
+            and target is None
+            and _escapes_bundle_root(raw, source_path)
+            else ArtifactDisposition.OUT_OF_SCOPE
+        )
         resolved_target: str | None = None
         if target is not None:
             # Resolution is intentionally confined to the caller's already

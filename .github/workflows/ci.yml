@@ -17,9 +17,9 @@ name: CI
 
 on:
   pull_request:
-    branches: ["main", "yashraj/v2.13.0-base"]
+    branches: ["main", "yashraj/v2.13.0-base", "fix/json-version-reference-classification-v2.13.3"]
   push:
-    branches: ["main", "yashraj/v2.13.0-base"]
+    branches: ["main", "yashraj/v2.13.0-base", "fix/json-version-reference-classification-v2.13.3"]
 
 # Least privilege: these jobs only read the repo; no write scopes are needed.
 permissions:
