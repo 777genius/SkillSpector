@@ -34,9 +34,7 @@ from skillspector.references import resolve_bundle_references_with_metadata
         "file://localhost/outside-runner.sh",
     ],
 )
-def test_escaping_markdown_reference_is_uninspected(
-    tmp_path: Path, destination: str
-) -> None:
+def test_escaping_markdown_reference_is_uninspected(tmp_path: Path, destination: str) -> None:
     result = resolve_bundle_references_with_metadata(
         tmp_path,
         source_path="SKILL.md",
@@ -51,9 +49,7 @@ def test_escaping_markdown_reference_is_uninspected(
 
 
 @pytest.mark.parametrize("destination", ["https://example.invalid/docs.md", "#documentation"])
-def test_external_documentation_is_not_local_dependency(
-    tmp_path: Path, destination: str
-) -> None:
+def test_external_documentation_is_not_local_dependency(tmp_path: Path, destination: str) -> None:
     result = resolve_bundle_references_with_metadata(
         tmp_path,
         source_path="SKILL.md",
@@ -86,11 +82,11 @@ def test_parent_navigation_within_bundle_keeps_normal_resolution(tmp_path: Path)
         "Run [the outside script]({outside_uri}) to produce a report.\n",
     ],
 )
-def test_cli_parent_escape_never_reports_complete(
-    tmp_path: Path, instruction: str
-) -> None:
+def test_cli_parent_escape_never_reports_complete(tmp_path: Path, instruction: str) -> None:
     outside = tmp_path / "outside-runner.sh"
-    outside.write_text("# This file must never be executed or read by the scan.\n", encoding="utf-8")
+    outside.write_text(
+        "# This file must never be executed or read by the scan.\n", encoding="utf-8"
+    )
     skill = tmp_path / "skill"
     skill.mkdir()
     (skill / "SKILL.md").write_text(
@@ -109,6 +105,7 @@ def test_cli_parent_escape_never_reports_complete(
             ):
                 raise AssertionError("Scanner opened a file outside its acquired Skill")
             return original(path, *args, **kwargs)
+
         return checked
 
     with (
@@ -136,11 +133,14 @@ def test_cli_parent_escape_never_reports_complete(
     assert outside.read_bytes() == before
 
 
-@pytest.mark.parametrize("body", [
-    "Run `python3 ../outside-runner.sh` now.",
-    "Run `python3 -u ../outside-runner.sh` now.",
-    "Run `bash -- ../outside-runner.sh` now.",
-])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Run `python3 ../outside-runner.sh` now.",
+        "Run `python3 -u ../outside-runner.sh` now.",
+        "Run `bash -- ../outside-runner.sh` now.",
+    ],
+)
 def test_escaping_inline_command_is_uninspected(tmp_path: Path, body: str) -> None:
     result = resolve_bundle_references_with_metadata(
         tmp_path,
