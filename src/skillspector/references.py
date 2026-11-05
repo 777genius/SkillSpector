@@ -48,7 +48,7 @@ _HTML_CONTEXT_START = re.compile(
     re.IGNORECASE,
 )
 _FRONTMATTER_VERSION = re.compile(
-    r"""^[ \t]*(?:version|'version'|"version"):[ \t]*(['"])"""
+    r"""^[ \t]*(?:version|[a-z][a-z0-9_-]{0,63}-version|'version'|"version"):[ \t]*(['"])"""
     r"(?P<version>v?[0-9]+(?:\.[0-9]+)+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)"
     r"\1(?=[ \t]*(?:#|\r?$))"
 )
