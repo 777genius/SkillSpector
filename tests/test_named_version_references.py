@@ -15,7 +15,13 @@ from skillspector.references import resolve_bundle_references_with_metadata
 
 @pytest.mark.parametrize(
     "key",
-    ["methodology-version", "candor-package-version", "skill-library-version"],
+    [
+        "methodology-version",
+        "candor-package-version",
+        "skill-library-version",
+        '"methodology-version"',
+        "'methodology-version'",
+    ],
 )
 def test_named_version_frontmatter_is_metadata(tmp_path: Path, key: str) -> None:
     text = f'---\nname: example\nmetadata:\n  {key}: "3.1.0"\n---\n'
@@ -33,6 +39,7 @@ def test_named_version_frontmatter_is_metadata(tmp_path: Path, key: str) -> None
         '---\nmetadata:\n  methodology-version: "1.x"\n---\n',
         '---\nmetadata:\n  methodology-version: "docs/tool.1"\n---\n',
         '---\nname: example\n---\nmethodology-version: "3.1.0"\n',
+        '---\nname: "example"\ndescription: |\n  methodology-version: "3.1.0"\n---\n',
     ],
 )
 def test_named_version_does_not_hide_other_references(tmp_path: Path, text: str) -> None:
