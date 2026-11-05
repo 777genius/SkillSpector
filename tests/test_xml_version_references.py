@@ -15,7 +15,9 @@ from skillspector.references import resolve_bundle_references_with_metadata
 
 @pytest.mark.parametrize("version", ["1.0", "1.1"])
 @pytest.mark.parametrize("fenced", [False, True])
-def test_xml_declaration_is_metadata(tmp_path: Path, version: str, fenced: bool) -> None:
+def test_xml_declaration_is_metadata(
+    tmp_path: Path, version: str, fenced: bool
+) -> None:
     prolog = f'<?xml version="{version}" encoding="UTF-8"?>\n'
     source = "```xml\n" + prolog + "```\n" if fenced else prolog
     result = resolve_bundle_references_with_metadata(
@@ -68,7 +70,8 @@ def test_xml_only_real_cli_is_complete(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     run = CliRunner().invoke(
-        app, ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+        app,
+        ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"],
     )
     assert run.exit_code == 0, run.output
     report = json.loads(run.stdout)
@@ -84,7 +87,8 @@ def test_xml_prolog_does_not_hide_genuine_missing_script(tmp_path: Path) -> None
         encoding="utf-8",
     )
     run = CliRunner().invoke(
-        app, ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+        app,
+        ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"],
     )
     assert run.exit_code == 1, run.output
     coverage = json.loads(run.stdout)["analysis_completeness"]
