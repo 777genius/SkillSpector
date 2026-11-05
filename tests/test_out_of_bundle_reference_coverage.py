@@ -123,12 +123,10 @@ def test_cli_parent_escape_never_reports_complete(tmp_path: Path, instruction: s
     assert coverage["is_complete"] is False
     assert coverage["status"] == "partial"
     assert any(
-        r["status"] == "rejected" and r["disposition"] == "partial"
-        for r in coverage["references"]
+        r["status"] == "rejected" and r["disposition"] == "partial" for r in coverage["references"]
     )
     assert any(
-        event["reason_code"] == "referenced_uninspected"
-        for event in coverage["ledger_exceptions"]
+        event["reason_code"] == "referenced_uninspected" for event in coverage["ledger_exceptions"]
     )
     assert outside.read_bytes() == before
 
@@ -172,6 +170,5 @@ def test_true_missing_command_remains_incomplete(tmp_path: Path) -> None:
     assert coverage["is_complete"] is False
     assert any(r["status"] == "missing" for r in coverage["references"])
     assert any(
-        event["reason_code"] == "reference_missing"
-        for event in coverage["ledger_exceptions"]
+        event["reason_code"] == "reference_missing" for event in coverage["ledger_exceptions"]
     )
