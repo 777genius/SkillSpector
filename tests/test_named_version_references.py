@@ -35,7 +35,9 @@ def test_named_version_frontmatter_is_metadata(tmp_path: Path, key: str) -> None
         '---\nname: example\n---\nmethodology-version: "3.1.0"\n',
     ],
 )
-def test_named_version_does_not_hide_other_references(tmp_path: Path, text: str) -> None:
+def test_named_version_does_not_hide_other_references(
+    tmp_path: Path, text: str
+) -> None:
     result = resolve_bundle_references_with_metadata(
         tmp_path, source_path="SKILL.md", source_text=text, known_paths=["SKILL.md"]
     )
@@ -67,7 +69,8 @@ def test_named_version_only_real_cli_is_complete(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     run = CliRunner().invoke(
-        app, ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+        app,
+        ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"],
     )
     assert run.exit_code == 0, run.output
     report = json.loads(run.stdout)
@@ -84,7 +87,8 @@ def test_named_version_cannot_hide_missing_executable_cli(tmp_path: Path) -> Non
         encoding="utf-8",
     )
     run = CliRunner().invoke(
-        app, ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+        app,
+        ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"],
     )
     assert run.exit_code == 1, run.output
     report = json.loads(run.stdout)
