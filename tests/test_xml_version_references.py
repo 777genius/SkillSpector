@@ -15,9 +15,7 @@ from skillspector.references import resolve_bundle_references_with_metadata
 
 @pytest.mark.parametrize("version", ["1.0", "1.1"])
 @pytest.mark.parametrize("fenced", [False, True])
-def test_xml_declaration_is_metadata(
-    tmp_path: Path, version: str, fenced: bool
-) -> None:
+def test_xml_declaration_is_metadata(tmp_path: Path, version: str, fenced: bool) -> None:
     prolog = f'<?xml version="{version}" encoding="UTF-8"?>\n'
     source = "```xml\n" + prolog + "```\n" if fenced else prolog
     result = resolve_bundle_references_with_metadata(
@@ -31,7 +29,7 @@ def test_xml_declaration_is_metadata(
     "source",
     [
         'Read "1.0".\n',
-        'Read [version file](1.0).\n',
+        "Read [version file](1.0).\n",
         '<?xml version="1.x" encoding="UTF-8"?>\n',
         "<?xml version='1.0' encoding='UTF-8'?>\n",
         '<?xml version="1.0" encoding="UTF-8"?> and read "1.0"\n',
