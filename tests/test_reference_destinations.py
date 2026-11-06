@@ -485,6 +485,8 @@ def test_documented_url_hosts_are_not_missing_files(
         "Read [host](agoda.com).",
         'The URL host "agoda.com" was listed in the specification.',
         "Use `agoda.com`.",
+        "The URL host `build.sh` invokes a local script.",
+        "The domain `schema.json` is a JSON document.",
     ],
 )
 def test_url_host_context_does_not_hide_real_file_uses(
