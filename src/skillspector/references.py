@@ -171,8 +171,21 @@ def _is_documented_url_hostname(text: str, start: int, end: int) -> bool:
         return False
     # A clearly documented hostname may use a script/document extension as a
     # TLD. Err on the side of retaining a potentially missing local artifact.
-    if tld.lower() in {"sh", "py", "js", "ts", "ps1", "cmd", "bat", "exe",
-                       "md", "json", "yaml", "yml", "toml"}:
+    if tld.lower() in {
+        "sh",
+        "py",
+        "js",
+        "ts",
+        "ps1",
+        "cmd",
+        "bat",
+        "exe",
+        "md",
+        "json",
+        "yaml",
+        "yml",
+        "toml",
+    }:
         return False
     # Never cross a line boundary or interpret an instruction to use a file
     # as documentation of a hostname.
