@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import heapq
+import ipaddress
 import posixpath
 import re
 import time
@@ -186,6 +187,55 @@ def _is_documented_url_hostname(text: str, start: int, end: int) -> bool:
         and not _DOCUMENTED_URL_HOST_FILE_USE.search(after)
     )
 
+
+# IPv4 addresses and dotted version ranges are not local file dependencies
+# when their immediate prose explicitly documents their meaning. Real
+# inventory matches, Markdown links and file/command uses still win.
+_DOCUMENTED_LITERAL_CLAUSE_END = re.compile(r"[;!?]|\.[ \t\r\n]|\r?\n")
+_IPV4_LITERAL = re.compile(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}", re.ASCII)
+_IPV4_PROSE = re.compile(
+    r"\b(?:ipv4|ip|addresses?|hosts?|hostnames?|servers?|localhost|loopback|"
+    r"bind(?:ing)?|listen(?:ing)?|network|dns)\b",
+    re.IGNORECASE,
+)
+_VERSION_RANGE_LITERAL = re.compile(r"v?[0-9]+(?:\.[0-9]+){0,2}\.[xX]", re.ASCII)
+_VERSION_RANGE_PROSE = re.compile(
+    r"\b(?:versions?|migrat(?:e|ing|ion)|upgrad(?:e|ing)|releases?|semver)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_documented_address_or_version(text: str, start: int, end: int) -> bool:
+    if not 3 <= end - start <= 24 or start < 1 or end >= len(text):
+        return False
+    if (
+        text[start - 1] != "`"
+        or text[end] != "`"
+        or (start > 1 and text[start - 2] in "`\\")
+        or (end + 1 < len(text) and text[end + 1] == "`")
+    ):
+        return False
+    token = text[start:end]
+    qualifier = None
+    if _IPV4_LITERAL.fullmatch(token):
+        try:
+            ipaddress.IPv4Address(token)
+        except ipaddress.AddressValueError:
+            return False
+        qualifier = _IPV4_PROSE
+    elif _VERSION_RANGE_LITERAL.fullmatch(token):
+        qualifier = _VERSION_RANGE_PROSE
+    if qualifier is None:
+        return False
+    # No qualifier may leak across a line or a sentence; a file operation
+    # anywhere in the current clause disqualifies this narrow exemption.
+    before = _DOCUMENTED_LITERAL_CLAUSE_END.split(text[max(0, start - 96) : start - 1])[-1]
+    after = _DOCUMENTED_LITERAL_CLAUSE_END.split(text[end + 1 : end + 97], maxsplit=1)[0]
+    return (
+        bool(qualifier.search(before) or qualifier.search(after))
+        and not _DOCUMENTED_URL_HOST_FILE_USE.search(before)
+        and not _DOCUMENTED_URL_HOST_FILE_USE.search(after)
+    )
 
 @dataclass(frozen=True)
 class ReferenceResolutionResult:
@@ -657,6 +707,9 @@ def _candidate_strings(
                                     text, line_offset + match.start, line_offset + match.end
                                 )
                                 or _is_documented_url_hostname(
+                                    text, line_offset + match.start, line_offset + match.end
+                                )
+                                or _is_documented_address_or_version(
                                     text, line_offset + match.start, line_offset + match.end
                                 )
                             ),
