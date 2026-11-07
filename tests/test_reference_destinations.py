@@ -679,9 +679,7 @@ def test_documented_literals_strict_cli_preserves_missing_scripts(tmp_path: Path
         ),
     ],
 )
-def test_http_response_data_coverage_is_not_a_missing_file(
-    tmp_path: Path, body: str
-) -> None:
+def test_http_response_data_coverage_is_not_a_missing_file(tmp_path: Path, body: str) -> None:
     result = resolve_bundle_references_with_metadata(
         tmp_path, source_path="SKILL.md", source_text=body, known_paths=["SKILL.md"]
     )
@@ -704,9 +702,7 @@ def test_http_response_data_coverage_is_not_a_missing_file(
         "POST /api/v1/trends: Read `data.sh`.",
     ],
 )
-def test_http_api_context_never_hides_real_missing_files(
-    tmp_path: Path, body: str
-) -> None:
+def test_http_api_context_never_hides_real_missing_files(tmp_path: Path, body: str) -> None:
     result = resolve_bundle_references_with_metadata(
         tmp_path, source_path="SKILL.md", source_text=body, known_paths=["SKILL.md"]
     )
@@ -742,7 +738,9 @@ def test_http_coverage_field_strict_no_llm_cli_and_missing_script(tmp_path: Path
     assert clean_coverage["references"] == []
 
     with (tmp_path / "SKILL.md").open("a", encoding="utf-8") as stream:
-        stream.write("Run [the required setup script](scripts/required.sh) before using the Skill.\n")
+        stream.write(
+            "Run [the required setup script](scripts/required.sh) before using the Skill.\n"
+        )
     incomplete = CliRunner().invoke(app, command)
     assert incomplete.exit_code == 1, incomplete.output
     missing = json.loads(incomplete.stdout)["analysis_completeness"]
