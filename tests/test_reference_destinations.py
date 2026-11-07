@@ -566,4 +566,6 @@ def test_url_host_context_cannot_hide_local_artifacts(
     assert result.complete
     assert len(result.records) == 1
     assert result.records[0]["status"] == "missing"
-    assert result.records[0]["target_path"] == missing_path
+    # Missing references have no resolved inventory target; the evidence retains the literal path.
+    assert result.records[0]["target_path"] is None
+    assert missing_path in result.records[0]["evidence"]
