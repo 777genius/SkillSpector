@@ -250,7 +250,7 @@ _API_COVERAGE_FILE_USE = re.compile(
     r"write|create|open|load|import|include)\b",
     re.IGNORECASE,
 )
-_API_COVERAGE_READ = re.compile(r"\bread\s*$", re.IGNORECASE)
+_API_COVERAGE_READ = re.compile(r"\bread[ \t]*`$", re.IGNORECASE)
 
 
 def _is_documented_api_coverage_field(text: str, start: int, end: int) -> bool:
