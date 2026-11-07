@@ -237,6 +237,7 @@ def _is_documented_address_or_version(text: str, start: int, end: int) -> bool:
         and not _DOCUMENTED_URL_HOST_FILE_USE.search(after)
     )
 
+
 @dataclass(frozen=True)
 class ReferenceResolutionResult:
     """Bounded reference records plus explicit extraction accounting."""
