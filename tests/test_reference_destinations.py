@@ -677,6 +677,11 @@ def test_documented_literals_strict_cli_preserves_missing_scripts(tmp_path: Path
             "| Endpoint | Method | Details |\n"
             "| /api/v1/trends | POST | Today is computed next morning - read `data.coverage`. |"
         ),
+        (
+            "### Trends - POST only\n\n"
+            "`GET /api/v1/trends` returns HTTP 404; empty POST body is accepted.\n\n"
+            "Topics are extracted daily; end yesterday or earlier and read `data.coverage`."
+        ),
     ],
 )
 def test_http_response_data_coverage_is_not_a_missing_file(tmp_path: Path, body: str) -> None:
@@ -700,6 +705,8 @@ def test_http_response_data_coverage_is_not_a_missing_file(tmp_path: Path, body:
         "POST /api/v1/trends: Read `data.coverage` file.",
         "POST /api/v1/trends documents the endpoint.\n\nRead `data.coverage`.",
         "POST /api/v1/trends: Read `data.sh`.",
+        "GET and POST methods are available. Read `data.coverage`.",
+        "### API\nPOST /api/v1/trends returns JSON.\n\n### Local files\nRead `data.coverage`.",
     ],
 )
 def test_http_api_context_never_hides_real_missing_files(tmp_path: Path, body: str) -> None:

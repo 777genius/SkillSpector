@@ -240,9 +240,10 @@ def _is_documented_address_or_version(text: str, start: int, end: int) -> bool:
 
 
 # An API response property may look like a file in Markdown inline code.
-# This exception is limited to an observed response field in the same
-# bounded HTTP paragraph; inventory, links and local-file usage still win.
+# This exception is limited to an observed response field in one bounded
+# API section with a verified endpoint. Inventory and local-file usage win.
 _API_COVERAGE_METHOD = re.compile(r"\b(?:GET|POST)\b")
+_API_COVERAGE_ROUTE = re.compile(r"(?<![\w/])/api/v1/trends(?![\w/-])", re.IGNORECASE)
 _API_COVERAGE_FILE_USE = re.compile(
     r"\b(?:files?|filenames?|paths?|scripts?|commands?|local|project|workspace|"
     r"directories|folders?|execut\w*|run|download\w*|install\w*|upload\w*|"
@@ -262,9 +263,16 @@ def _is_documented_api_coverage_field(text: str, start: int, end: int) -> bool:
         or (end + 1 < len(text) and text[end + 1] == chr(96))
     ):
         return False
-    # The method and property usage must share a bounded Markdown paragraph.
-    preceding = text[max(0, start - 1200) : start].rsplit("\n\n", 1)[-1]
-    if not _API_COVERAGE_METHOD.search(preceding) or _API_COVERAGE_FILE_USE.search(preceding):
+    # The real API can document POST in a preceding paragraph. Only accept
+    # that context inside the same bounded Markdown section with the exact
+    # observed route; unrelated GET/POST prose is not sufficient proof.
+    section = re.split(r"(?m)^#{1,6}[ \t]+", text[max(0, start - 1200) : start])[-1]
+    preceding = section.rsplit("\n\n", 1)[-1]
+    if (
+        not _API_COVERAGE_METHOD.search(section)
+        or not _API_COVERAGE_ROUTE.search(section)
+        or _API_COVERAGE_FILE_USE.search(section)
+    ):
         return False
     clause = _DATA_FIELD_CLAUSE_END.split(preceding)[-1]
     following = _DATA_FIELD_CLAUSE_END.split(text[end + 1 : end + 97], maxsplit=1)[0]
