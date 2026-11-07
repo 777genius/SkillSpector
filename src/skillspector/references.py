@@ -238,6 +238,39 @@ def _is_documented_address_or_version(text: str, start: int, end: int) -> bool:
     )
 
 
+
+# An API response property may look like a file in Markdown inline code.
+# This exception is limited to an observed response field in the same
+# bounded HTTP paragraph; inventory, links and local-file usage still win.
+_API_COVERAGE_METHOD = re.compile(r"\b(?:GET|POST)\b")
+_API_COVERAGE_FILE_USE = re.compile(
+    r"\b(?:files?|filenames?|paths?|scripts?|commands?|local|project|workspace|"
+    r"directories|folders?|execut\w*|run|download\w*|install\w*|upload\w*|"
+    r"write|create|open|load|import|include)\b",
+    re.IGNORECASE,
+)
+_API_COVERAGE_READ = re.compile(r"\bread\s*$", re.IGNORECASE)
+
+
+def _is_documented_api_coverage_field(text: str, start: int, end: int) -> bool:
+    if text[start:end] != "data.coverage" or start < 1 or end >= len(text):
+        return False
+    if (
+        text[start - 1] != chr(96)
+        or text[end] != chr(96)
+        or (start > 1 and text[start - 2] in (chr(96), chr(92)))
+        or (end + 1 < len(text) and text[end + 1] == chr(96))
+    ):
+        return False
+    # The method and property usage must share a bounded Markdown paragraph.
+    preceding = text[max(0, start - 1200) : start].rsplit("\n\n", 1)[-1]
+    if not _API_COVERAGE_METHOD.search(preceding) or _API_COVERAGE_FILE_USE.search(preceding):
+        return False
+    clause = _DATA_FIELD_CLAUSE_END.split(preceding)[-1]
+    following = _DATA_FIELD_CLAUSE_END.split(text[end + 1 : end + 97], maxsplit=1)[0]
+    return bool(_API_COVERAGE_READ.search(clause)) and not _API_COVERAGE_FILE_USE.search(following)
+
+
 @dataclass(frozen=True)
 class ReferenceResolutionResult:
     """Bounded reference records plus explicit extraction accounting."""
@@ -711,6 +744,9 @@ def _candidate_strings(
                                     text, line_offset + match.start, line_offset + match.end
                                 )
                                 or _is_documented_address_or_version(
+                                    text, line_offset + match.start, line_offset + match.end
+                                )
+                                or _is_documented_api_coverage_field(
                                     text, line_offset + match.start, line_offset + match.end
                                 )
                             ),
