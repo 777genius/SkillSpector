@@ -683,6 +683,10 @@ def test_documented_literals_strict_cli_preserves_missing_scripts(tmp_path: Path
             "Topics are extracted daily; end yesterday or earlier and read `data.coverage`."
         ),
         (
+            "POST /api/v1/trends returns a JSON response.\n\n"
+            "Read `data.coverage`."
+        ),
+        (
             "### Trends - POST only\n\n"
             "curl -X POST https://example.test/api/v1/trends\n\n"
             "Topics are extracted daily; read `data.coverage`."

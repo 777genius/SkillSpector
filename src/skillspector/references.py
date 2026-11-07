@@ -244,6 +244,10 @@ def _is_documented_address_or_version(text: str, start: int, end: int) -> bool:
 # API section with a verified endpoint. Inventory and local-file usage win.
 _API_COVERAGE_METHOD = re.compile(r"\b(?:GET|POST)\b")
 _API_COVERAGE_ROUTE = re.compile(r"/api/v1/trends(?![\w/-])", re.IGNORECASE)
+_API_COVERAGE_RESPONSE = re.compile(
+    r"\b(?:json|response|returns?|topics?|entities|extracted|computed)\b",
+    re.IGNORECASE,
+)
 _API_COVERAGE_FILE_USE = re.compile(
     r"\b(?:files?|filenames?|paths?|scripts?|commands?|local|project|workspace|"
     r"directories|folders?|execut\w*|run|download\w*|install\w*|upload\w*|"
@@ -271,6 +275,7 @@ def _is_documented_api_coverage_field(text: str, start: int, end: int) -> bool:
     if (
         not _API_COVERAGE_METHOD.search(section)
         or not _API_COVERAGE_ROUTE.search(section)
+        or not _API_COVERAGE_RESPONSE.search(section)
         or _API_COVERAGE_FILE_USE.search(section)
     ):
         return False
