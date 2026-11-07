@@ -682,6 +682,11 @@ def test_documented_literals_strict_cli_preserves_missing_scripts(tmp_path: Path
             "`GET /api/v1/trends` returns HTTP 404; empty POST body is accepted.\n\n"
             "Topics are extracted daily; end yesterday or earlier and read `data.coverage`."
         ),
+        (
+            "### Trends - POST only\n\n"
+            "curl -X POST https://example.test/api/v1/trends\n\n"
+            "Topics are extracted daily; read `data.coverage`."
+        ),
     ],
 )
 def test_http_response_data_coverage_is_not_a_missing_file(tmp_path: Path, body: str) -> None:

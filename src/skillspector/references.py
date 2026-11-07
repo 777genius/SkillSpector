@@ -243,7 +243,7 @@ def _is_documented_address_or_version(text: str, start: int, end: int) -> bool:
 # This exception is limited to an observed response field in one bounded
 # API section with a verified endpoint. Inventory and local-file usage win.
 _API_COVERAGE_METHOD = re.compile(r"\b(?:GET|POST)\b")
-_API_COVERAGE_ROUTE = re.compile(r"(?<![\w/])/api/v1/trends(?![\w/-])", re.IGNORECASE)
+_API_COVERAGE_ROUTE = re.compile(r"/api/v1/trends(?![\w/-])", re.IGNORECASE)
 _API_COVERAGE_FILE_USE = re.compile(
     r"\b(?:files?|filenames?|paths?|scripts?|commands?|local|project|workspace|"
     r"directories|folders?|execut\w*|run|download\w*|install\w*|upload\w*|"
