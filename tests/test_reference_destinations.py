@@ -674,7 +674,7 @@ def test_documented_literals_strict_cli_preserves_missing_scripts(tmp_path: Path
             "`limit` defaults to 20."
         ),
         (
-            "| Endpoint | Method | Details |\\n"
+            "| Endpoint | Method | Details |\n"
             "| /api/v1/trends | POST | Today is computed next morning - read `data.coverage`. |"
         ),
     ],
@@ -700,7 +700,7 @@ def test_http_response_data_coverage_is_not_a_missing_file(
         "POST /api/v1/trends: Download `data.coverage` from the server.",
         "POST /api/v1/trends: Read [the local file](data.coverage).",
         "POST /api/v1/trends: Read `data.coverage` file.",
-        "POST /api/v1/trends documents the endpoint.\\n\\nRead `data.coverage`.",
+        "POST /api/v1/trends documents the endpoint.\n\nRead `data.coverage`.",
         "POST /api/v1/trends: Read `data.sh`.",
     ],
 )
@@ -730,8 +730,8 @@ def test_http_coverage_field_present_in_local_inventory_is_resolved(tmp_path: Pa
 
 def test_http_coverage_field_strict_no_llm_cli_and_missing_script(tmp_path: Path) -> None:
     (tmp_path / "SKILL.md").write_text(
-        "---\\nname: api-coverage-example\\ndescription: Read response JSON fields.\\n---\\n"
-        "POST /api/v1/trends returns JSON. End at yesterday and read `data.coverage`.\\n",
+        "---\nname: api-coverage-example\ndescription: Read response JSON fields.\n---\n"
+        "POST /api/v1/trends returns JSON. End at yesterday and read `data.coverage`.\n",
         encoding="utf-8",
     )
     command = ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"]
@@ -742,7 +742,7 @@ def test_http_coverage_field_strict_no_llm_cli_and_missing_script(tmp_path: Path
     assert clean_coverage["references"] == []
 
     with (tmp_path / "SKILL.md").open("a", encoding="utf-8") as stream:
-        stream.write("Run [the required setup script](scripts/required.sh) before using the Skill.\\n")
+        stream.write("Run [the required setup script](scripts/required.sh) before using the Skill.\n")
     incomplete = CliRunner().invoke(app, command)
     assert incomplete.exit_code == 1, incomplete.output
     missing = json.loads(incomplete.stdout)["analysis_completeness"]
