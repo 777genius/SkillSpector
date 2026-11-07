@@ -168,29 +168,11 @@ def _is_documented_url_hostname(text: str, start: int, end: int) -> bool:
         or (end + 1 < len(text) and text[end + 1] == "`")
     ):
         return False
+    # Only demonstrated DNS suffixes qualify for this bounded prose exception.
+    # An unknown suffix can be a local artifact (e.g. data.csv or bundle.zip);
+    # retain its missing-reference evidence instead of guessing a hostname.
     tld = text[start:end].rsplit(".", 1)[-1]
-    if not (2 <= len(tld) <= 12 and tld.isascii() and tld.isalpha()):
-        return False
-    # A clearly documented hostname may use a script/document extension as a
-    # TLD. Err on the side of retaining a potentially missing local artifact.
-    if tld.lower() in {
-        "sh",
-        "py",
-        "js",
-        "ts",
-        "ps1",
-        "cmd",
-        "bat",
-        "exe",
-        "md",
-        "json",
-        "yaml",
-        "yml",
-        "toml",
-        "ini",
-        "cfg",
-        "conf",
-    }:
+    if tld.lower() not in {"com", "org", "net"}:
         return False
     # Never cross a line boundary or interpret an instruction to use a file
     # as documentation of a hostname.

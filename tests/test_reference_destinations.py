@@ -463,6 +463,7 @@ async def test_markdown_limits_block_complete_verdict(
         ),
         ("Use the cookie domain `app.example.com` for the host allowlist.", 1),
         ("The hostname `api.example.org` identifies the public endpoint.", 1),
+        ("The URL host `videos.example.net` identifies the endpoint.", 1),
     ],
 )
 def test_documented_url_hosts_are_not_missing_files(
@@ -551,6 +552,9 @@ def test_documented_url_hosts_strict_cli_finishes_without_missing_refs(
         ("The URL host `agoda.com` is the executable command.", "agoda.com"),
         ("The URL host `settings.ini` must be downloaded.", "settings.ini"),
         ("The domain `config.cfg` is required.", "config.cfg"),
+        ("The URL host `data.csv` is listed.", "data.csv"),
+        ("The URL host `bundle.zip` is public.", "bundle.zip"),
+        ("The domain `package.lock` is listed.", "package.lock"),
     ],
 )
 def test_url_host_context_cannot_hide_local_artifacts(
