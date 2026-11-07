@@ -530,3 +530,32 @@ def test_documented_url_hosts_strict_cli_finishes_without_missing_refs(
     assert report["execution_successful"] is True
     assert report["analysis_completeness"]["is_complete"] is True
     assert report["analysis_completeness"]["references"] == []
+
+
+@pytest.mark.parametrize(
+    ("body", "missing_path"),
+    [
+        (
+            "The hostname `api.example.org` is public. The local `config.ini` is required.",
+            "config.ini",
+        ),
+        (
+            "The URL host `agoda.com` is public; `settings.conf` is required.",
+            "settings.conf",
+        ),
+        (
+            "The domain `settings.ini` is a required local file.",
+            "settings.ini",
+        ),
+    ],
+)
+def test_url_host_context_cannot_hide_local_artifacts(
+    tmp_path: Path, body: str, missing_path: str
+) -> None:
+    result = resolve_bundle_references_with_metadata(
+        tmp_path, source_path="SKILL.md", source_text=body, known_paths=["SKILL.md"]
+    )
+    assert result.complete
+    assert len(result.records) == 1
+    assert result.records[0]["status"] == "missing"
+    assert result.records[0]["target_path"] == missing_path

@@ -189,9 +189,14 @@ def _is_documented_url_hostname(text: str, start: int, end: int) -> bool:
         return False
     # Never cross a line boundary or interpret an instruction to use a file
     # as documentation of a hostname.
-    before = text[max(0, start - 96) : start - 1].rsplit("\n", 1)[-1]
-    return bool(_DOCUMENTED_URL_HOST.search(before)) and not _DOCUMENTED_URL_HOST_FILE_USE.search(
-        before
+    # A host qualifier in a previous sentence cannot excuse a missing local
+    # file on the same line. Explicit file use after the token also wins.
+    before = _DATA_FIELD_CLAUSE_END.split(text[max(0, start - 96) : start - 1])[-1]
+    after = _DATA_FIELD_CLAUSE_END.split(text[end + 1 : end + 97], maxsplit=1)[0]
+    return (
+        bool(_DOCUMENTED_URL_HOST.search(before))
+        and not _DOCUMENTED_URL_HOST_FILE_USE.search(before)
+        and not _DOCUMENTED_URL_HOST_FILE_USE.search(after)
     )
 
 
