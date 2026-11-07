@@ -149,7 +149,9 @@ def _is_documented_data_field(text: str, start: int, end: int) -> bool:
 # matches and explicit file/command uses still take precedence.
 _DOCUMENTED_URL_HOST = re.compile(r"\b(?:URL[ \t]+hosts?|hostnames?|domains?)\b", re.IGNORECASE)
 _DOCUMENTED_URL_HOST_FILE_USE = re.compile(
-    r"\b(?:files?|filenames?|paths?|scripts?|read|run|execute|open|load|include|import)\b",
+    r"\b(?:files?|filenames?|paths?|scripts?|commands?|read|run|execut\w*|open|load|"
+    r"include|import|download\w*|upload\w*|cop(?:y|ied|ying)|mov(?:e|es|ed|ing)|"
+    r"delet\w*|install\w*)\b",
     re.IGNORECASE,
 )
 
@@ -185,6 +187,9 @@ def _is_documented_url_hostname(text: str, start: int, end: int) -> bool:
         "yaml",
         "yml",
         "toml",
+        "ini",
+        "cfg",
+        "conf",
     }:
         return False
     # Never cross a line boundary or interpret an instruction to use a file

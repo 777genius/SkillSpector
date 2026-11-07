@@ -547,6 +547,10 @@ def test_documented_url_hosts_strict_cli_finishes_without_missing_refs(
             "The domain `settings.ini` is a required local file.",
             "settings.ini",
         ),
+        ("Download the URL host `agoda.com` before use.", "agoda.com"),
+        ("The URL host `agoda.com` is the executable command.", "agoda.com"),
+        ("The URL host `settings.ini` must be downloaded.", "settings.ini"),
+        ("The domain `config.cfg` is required.", "config.cfg"),
     ],
 )
 def test_url_host_context_cannot_hide_local_artifacts(
