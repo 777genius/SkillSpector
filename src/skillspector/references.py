@@ -238,7 +238,6 @@ def _is_documented_address_or_version(text: str, start: int, end: int) -> bool:
     )
 
 
-
 # An API response property may look like a file in Markdown inline code.
 # This exception is limited to an observed response field in one bounded
 # API section with a verified endpoint. Inventory and local-file usage win.
@@ -258,6 +257,7 @@ _API_COVERAGE_READ = re.compile(r"\bread[ \t]*`$", re.IGNORECASE)
 
 
 def _is_documented_api_coverage_field(text: str, start: int, end: int) -> bool:
+    """Skip only a verified inline HTTP response property, never a local path."""
     if text[start:end] != "data.coverage" or start < 1 or end >= len(text):
         return False
     if (
