@@ -663,3 +663,88 @@ def test_documented_literals_strict_cli_preserves_missing_scripts(tmp_path: Path
     report = json.loads(rejected.stdout)
     assert report["analysis_completeness"]["is_complete"] is False
     assert any(r["status"] == "missing" for r in report["analysis_completeness"]["references"])
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        (
+            "POST only: GET /api/v1/trends returns HTTP 404 (HTML, not JSON). "
+            "Topics extracted daily; end yesterday or earlier and read `data.coverage`. "
+            "`limit` defaults to 20."
+        ),
+        (
+            "| Endpoint | Method | Details |\\n"
+            "| /api/v1/trends | POST | Today is computed next morning - read `data.coverage`. |"
+        ),
+    ],
+)
+def test_http_response_data_coverage_is_not_a_missing_file(
+    tmp_path: Path, body: str
+) -> None:
+    result = resolve_bundle_references_with_metadata(
+        tmp_path, source_path="SKILL.md", source_text=body, known_paths=["SKILL.md"]
+    )
+    assert result.complete
+    assert result.records == []
+    assert result.accepted_references == 0
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Read `data.coverage`.",
+        "POST /api/v1/trends: Read the file `data.coverage`.",
+        "POST /api/v1/trends: Read `data.coverage` from a local project file.",
+        "POST /api/v1/trends: Run `data.coverage` as the executable.",
+        "POST /api/v1/trends: Download `data.coverage` from the server.",
+        "POST /api/v1/trends: Read [the local file](data.coverage).",
+        "POST /api/v1/trends: Read `data.coverage` file.",
+        "POST /api/v1/trends documents the endpoint.\\n\\nRead `data.coverage`.",
+        "POST /api/v1/trends: Read `data.sh`.",
+    ],
+)
+def test_http_api_context_never_hides_real_missing_files(
+    tmp_path: Path, body: str
+) -> None:
+    result = resolve_bundle_references_with_metadata(
+        tmp_path, source_path="SKILL.md", source_text=body, known_paths=["SKILL.md"]
+    )
+    assert result.complete
+    assert result.records
+    assert all(ref["status"] == "missing" for ref in result.records)
+
+
+def test_http_coverage_field_present_in_local_inventory_is_resolved(tmp_path: Path) -> None:
+    result = resolve_bundle_references_with_metadata(
+        tmp_path,
+        source_path="SKILL.md",
+        source_text="POST /api/v1/trends returns JSON; read `data.coverage`.",
+        known_paths=["SKILL.md", "data.coverage"],
+    )
+    assert result.complete
+    assert len(result.records) == 1
+    assert result.records[0]["status"] == "resolved"
+    assert result.records[0]["target_path"] == "data.coverage"
+
+
+def test_http_coverage_field_strict_no_llm_cli_and_missing_script(tmp_path: Path) -> None:
+    (tmp_path / "SKILL.md").write_text(
+        "---\\nname: api-coverage-example\\ndescription: Read response JSON fields.\\n---\\n"
+        "POST /api/v1/trends returns JSON. End at yesterday and read `data.coverage`.\\n",
+        encoding="utf-8",
+    )
+    command = ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+    clean = CliRunner().invoke(app, command)
+    assert clean.exit_code == 0, clean.output
+    clean_coverage = json.loads(clean.stdout)["analysis_completeness"]
+    assert clean_coverage["is_complete"] is True
+    assert clean_coverage["references"] == []
+
+    with (tmp_path / "SKILL.md").open("a", encoding="utf-8") as stream:
+        stream.write("Run [the required setup script](scripts/required.sh) before using the Skill.\\n")
+    incomplete = CliRunner().invoke(app, command)
+    assert incomplete.exit_code == 1, incomplete.output
+    missing = json.loads(incomplete.stdout)["analysis_completeness"]
+    assert missing["is_complete"] is False
+    assert any(ref["status"] == "missing" for ref in missing["references"])
