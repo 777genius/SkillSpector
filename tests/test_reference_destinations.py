@@ -490,9 +490,7 @@ def test_documented_url_hosts_are_not_missing_files(
         "The domain `schema.json` is a JSON document.",
     ],
 )
-def test_url_host_context_does_not_hide_real_file_uses(
-    tmp_path: Path, body: str
-) -> None:
+def test_url_host_context_does_not_hide_real_file_uses(tmp_path: Path, body: str) -> None:
     result = resolve_bundle_references_with_metadata(
         tmp_path, source_path="SKILL.md", source_text=body, known_paths=["SKILL.md"]
     )
