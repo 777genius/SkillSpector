@@ -144,6 +144,49 @@ def _is_documented_data_field(text: str, start: int, end: int) -> bool:
     )
 
 
+# A literal domain listed as a URL host is not a local file dependency. Keep
+# this exception bounded to unescaped single-backtick prose; actual inventory
+# matches and explicit file/command uses still take precedence.
+_DOCUMENTED_URL_HOST = re.compile(r"\b(?:URL[ \t]+hosts?|hostnames?|domains?)\b", re.IGNORECASE)
+_DOCUMENTED_URL_HOST_FILE_USE = re.compile(
+    r"\b(?:files?|filenames?|paths?|scripts?|commands?|read|run|execut\w*|open|load|"
+    r"include|import|download\w*|upload\w*|cop(?:y|ied|ying)|mov(?:e|es|ed|ing)|"
+    r"delet\w*|install\w*)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_documented_url_hostname(text: str, start: int, end: int) -> bool:
+    if end - start > 128 or _DOTTED_IDENTIFIER.fullmatch(text, start, end) is None:
+        return False
+    if (
+        start < 1
+        or end >= len(text)
+        or text[start - 1] != "`"
+        or text[end] != "`"
+        or (start > 1 and text[start - 2] in "`\\")
+        or (end + 1 < len(text) and text[end + 1] == "`")
+    ):
+        return False
+    # Only demonstrated DNS suffixes qualify for this bounded prose exception.
+    # An unknown suffix can be a local artifact (e.g. data.csv or bundle.zip);
+    # retain its missing-reference evidence instead of guessing a hostname.
+    tld = text[start:end].rsplit(".", 1)[-1]
+    if tld.lower() not in {"com", "org", "net"}:
+        return False
+    # Never cross a line boundary or interpret an instruction to use a file
+    # as documentation of a hostname.
+    # A host qualifier in a previous sentence cannot excuse a missing local
+    # file on the same line. Explicit file use after the token also wins.
+    before = _DATA_FIELD_CLAUSE_END.split(text[max(0, start - 96) : start - 1])[-1]
+    after = _DATA_FIELD_CLAUSE_END.split(text[end + 1 : end + 97], maxsplit=1)[0]
+    return (
+        bool(_DOCUMENTED_URL_HOST.search(before))
+        and not _DOCUMENTED_URL_HOST_FILE_USE.search(before)
+        and not _DOCUMENTED_URL_HOST_FILE_USE.search(after)
+    )
+
+
 @dataclass(frozen=True)
 class ReferenceResolutionResult:
     """Bounded reference records plus explicit extraction accounting."""
@@ -609,8 +652,13 @@ def _candidate_strings(
                             and not line_is_indented_code
                             and not line_in_html
                             and inline_code_delimiter == 1
-                            and _is_documented_data_field(
-                                text, line_offset + match.start, line_offset + match.end
+                            and (
+                                _is_documented_data_field(
+                                    text, line_offset + match.start, line_offset + match.end
+                                )
+                                or _is_documented_url_hostname(
+                                    text, line_offset + match.start, line_offset + match.end
+                                )
                             ),
                         )
                     )

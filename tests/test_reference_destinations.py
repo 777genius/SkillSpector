@@ -451,3 +451,119 @@ async def test_markdown_limits_block_complete_verdict(
         report = json.loads(result["report"])
     assert report["execution_successful"] is True
     assert report["analysis_completeness"]["is_complete"] is False
+
+
+@pytest.mark.parametrize(
+    ("body", "raw_count"),
+    [
+        (
+            "Attribute the source only from the URL host "
+            "(`agoda.com`, `trip.com`, `traveloka.com`) — not from a listing name.",
+            3,
+        ),
+        ("Use the cookie domain `app.example.com` for the host allowlist.", 1),
+        ("The hostname `api.example.org` identifies the public endpoint.", 1),
+        ("The URL host `videos.example.net` identifies the endpoint.", 1),
+    ],
+)
+def test_documented_url_hosts_are_not_missing_files(
+    tmp_path: Path, body: str, raw_count: int
+) -> None:
+    result = resolve_bundle_references_with_metadata(
+        tmp_path, source_path="SKILL.md", source_text=body, known_paths=["SKILL.md"]
+    )
+    assert result.complete
+    assert result.raw_candidates_considered == raw_count
+    assert result.accepted_references == 0
+    assert result.records == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Read the file `agoda.com` from the URL host list.",
+        "Run `agoda.com` as the command for the URL host.",
+        "Read [host](agoda.com).",
+        'The URL host "agoda.com" was listed in the specification.',
+        "Use `agoda.com`.",
+        "The URL host `build.sh` invokes a local script.",
+        "The domain `schema.json` is a JSON document.",
+    ],
+)
+def test_url_host_context_does_not_hide_real_file_uses(tmp_path: Path, body: str) -> None:
+    result = resolve_bundle_references_with_metadata(
+        tmp_path, source_path="SKILL.md", source_text=body, known_paths=["SKILL.md"]
+    )
+    assert result.complete
+    assert result.records
+    assert all(ref["status"] == "missing" for ref in result.records)
+
+
+def test_documented_url_host_existing_artifact_is_still_scanned(tmp_path: Path) -> None:
+    result = resolve_bundle_references_with_metadata(
+        tmp_path,
+        source_path="SKILL.md",
+        source_text="Attribute the source only from the URL host (`agoda.com`).",
+        known_paths=["SKILL.md", "agoda.com"],
+    )
+    assert result.complete
+    assert len(result.records) == 1
+    assert result.records[0]["status"] == "resolved"
+    assert result.records[0]["target_path"] == "agoda.com"
+
+
+def test_documented_url_hosts_strict_cli_finishes_without_missing_refs(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "SKILL.md").write_text(
+        "---\nname: url-host-example\ndescription: Attribute source URLs to domains.\n---\n"
+        "Attribute the source only from the URL host "
+        "(`agoda.com`, `trip.com`, `traveloka.com`).\n",
+        encoding="utf-8",
+    )
+    run = CliRunner().invoke(
+        app, ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+    )
+    assert run.exit_code == 0, run.output
+    report = json.loads(run.stdout)
+    assert report["execution_successful"] is True
+    assert report["analysis_completeness"]["is_complete"] is True
+    assert report["analysis_completeness"]["references"] == []
+
+
+@pytest.mark.parametrize(
+    ("body", "missing_path"),
+    [
+        (
+            "The hostname `api.example.org` is public. The local `config.ini` is required.",
+            "config.ini",
+        ),
+        (
+            "The URL host `agoda.com` is public; `settings.conf` is required.",
+            "settings.conf",
+        ),
+        (
+            "The domain `settings.ini` is a required local file.",
+            "settings.ini",
+        ),
+        ("Download the URL host `agoda.com` before use.", "agoda.com"),
+        ("The URL host `agoda.com` is the executable command.", "agoda.com"),
+        ("The URL host `settings.ini` must be downloaded.", "settings.ini"),
+        ("The domain `config.cfg` is required.", "config.cfg"),
+        ("The URL host `data.csv` is listed.", "data.csv"),
+        ("The URL host `bundle.zip` is public.", "bundle.zip"),
+        ("The domain `package.lock` is listed.", "package.lock"),
+    ],
+)
+def test_url_host_context_cannot_hide_local_artifacts(
+    tmp_path: Path, body: str, missing_path: str
+) -> None:
+    result = resolve_bundle_references_with_metadata(
+        tmp_path, source_path="SKILL.md", source_text=body, known_paths=["SKILL.md"]
+    )
+    assert result.complete
+    assert len(result.records) == 1
+    assert result.records[0]["status"] == "missing"
+    # Missing references have no resolved inventory target; the evidence retains the literal path.
+    assert result.records[0]["target_path"] is None
+    assert missing_path in result.records[0]["evidence"]
