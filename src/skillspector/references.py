@@ -238,6 +238,52 @@ def _is_documented_address_or_version(text: str, start: int, end: int) -> bool:
     )
 
 
+# An API response property may look like a file in Markdown inline code.
+# This exception is limited to an observed response field in one bounded
+# API section with a verified endpoint. Inventory and local-file usage win.
+_API_COVERAGE_METHOD = re.compile(r"\b(?:GET|POST)\b")
+_API_COVERAGE_ROUTE = re.compile(r"/api/v1/trends(?![\w/-])", re.IGNORECASE)
+_API_COVERAGE_RESPONSE = re.compile(
+    r"\b(?:json|response|returns?|topics?|entities|extracted|computed)\b",
+    re.IGNORECASE,
+)
+_API_COVERAGE_FILE_USE = re.compile(
+    r"\b(?:files?|filenames?|paths?|scripts?|commands?|local|project|workspace|"
+    r"directories|folders?|execut\w*|run|download\w*|install\w*|upload\w*|"
+    r"write|create|open|load|import|include)\b",
+    re.IGNORECASE,
+)
+_API_COVERAGE_READ = re.compile(r"\bread[ \t]*`$", re.IGNORECASE)
+
+
+def _is_documented_api_coverage_field(text: str, start: int, end: int) -> bool:
+    """Skip only a verified inline HTTP response property, never a local path."""
+    if text[start:end] != "data.coverage" or start < 1 or end >= len(text):
+        return False
+    if (
+        text[start - 1] != chr(96)
+        or text[end] != chr(96)
+        or (start > 1 and text[start - 2] in (chr(96), chr(92)))
+        or (end + 1 < len(text) and text[end + 1] == chr(96))
+    ):
+        return False
+    # The real API can document POST in a preceding paragraph. Only accept
+    # that context inside the same bounded Markdown section with the exact
+    # observed route; unrelated GET/POST prose is not sufficient proof.
+    section = re.split(r"(?m)^#{1,6}[ \t]+", text[max(0, start - 1200) : start])[-1]
+    preceding = section.rsplit("\n\n", 1)[-1]
+    if (
+        not _API_COVERAGE_METHOD.search(section)
+        or not _API_COVERAGE_ROUTE.search(section)
+        or not _API_COVERAGE_RESPONSE.search(section)
+        or _API_COVERAGE_FILE_USE.search(section)
+    ):
+        return False
+    clause = _DATA_FIELD_CLAUSE_END.split(preceding)[-1]
+    following = _DATA_FIELD_CLAUSE_END.split(text[end + 1 : end + 97], maxsplit=1)[0]
+    return bool(_API_COVERAGE_READ.search(clause)) and not _API_COVERAGE_FILE_USE.search(following)
+
+
 @dataclass(frozen=True)
 class ReferenceResolutionResult:
     """Bounded reference records plus explicit extraction accounting."""
@@ -711,6 +757,9 @@ def _candidate_strings(
                                     text, line_offset + match.start, line_offset + match.end
                                 )
                                 or _is_documented_address_or_version(
+                                    text, line_offset + match.start, line_offset + match.end
+                                )
+                                or _is_documented_api_coverage_field(
                                     text, line_offset + match.start, line_offset + match.end
                                 )
                             ),
