@@ -65,6 +65,7 @@ def test_multiple_documented_field_rows_keep_other_true_missing_references(tmp_p
         "| Field | Value | Description |\n|-------|------|-------------|\n"
         "| `data.id` | uuid | An identifier. |",
         HEADER + "| `data.id` | binary | Read from a file. |",
+        HEADER + "| `data.id` | enum: ../../outside | A value. |",
         HEADER + "| `data.id` | uuid | Path to the missing file. |",
         HEADER + "| `config.json` | string | Setting. |",
         HEADER + "| `data.id` | uuid | A property. | extra |",
