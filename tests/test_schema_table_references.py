@@ -135,7 +135,7 @@ def test_repeated_webhook_event_tables_share_the_nearest_api_heading(tmp_path: P
         body += "| `meta.attempt` | integer | Delivery attempt number. |\n"
         body += "| `data.event_type` | enum: fax.delivered | Event kind. |\n"
         body += "| `scripts/setup.sh` | string | Run the local setup script. |\n\n"
-        body += "The event includes public webhook properties.\n\n" * 10
+        body += "The event includes public webhook properties.\n\n" * 20
     result = resolve(tmp_path, body)
     assert result.complete
     assert not any("data.id" in r["evidence"] for r in result.records)
