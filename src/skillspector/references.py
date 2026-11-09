@@ -145,6 +145,63 @@ def _is_documented_data_field(text: str, start: int, end: int) -> bool:
     )
 
 
+# A schema table documents scalar fields; it is not an artifact inventory.
+# Require the exact table header and type column. Explicit file uses and real
+# inventory matches continue through normal fail-closed reference resolution.
+_SCHEMA_TABLE_TYPES = frozenset({
+    "uuid", "uri", "url", "string", "integer", "int", "number", "decimal",
+    "float", "boolean", "bool", "date-time", "datetime", "timestamp",
+    "object", "array",
+})
+_SCHEMA_FILE_SUFFIXES = frozenset({
+    "json", "md", "py", "js", "ts", "jsx", "tsx", "sh", "yaml", "yml",
+    "toml", "txt", "csv", "sql", "ini", "env", "html", "xml", "css",
+})
+
+
+def _is_documented_schema_table_field(text: str, start: int, end: int) -> bool:
+    """Match bounded Markdown API property rows, never a real missing file."""
+    field = text[start:end]
+    if end - start > 128 or _DOTTED_IDENTIFIER.fullmatch(field) is None:
+        return False
+    if field.rsplit(".", 1)[-1].lower() in _SCHEMA_FILE_SUFFIXES:
+        return False
+    if start < 1 or end >= len(text) or text[start - 1] != "`" or text[end] != "`":
+        return False
+    if (start > 1 and text[start - 2] in ("`", "\\")
+            or end + 1 < len(text) and text[end + 1] == "`"):
+        return False
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    if line_end == -1:
+        line_end = len(text)
+    if line_end - line_start > 512:
+        return False
+    cells = text[line_start:line_end].split("|")
+    if (len(cells) != 5 or cells[0].strip() or cells[-1].strip()
+            or cells[1].strip() != f"`{field}`" or not cells[3].strip()
+            or _DATA_FIELD_FILE_CONTEXT.search(cells[3])):
+        return False
+    field_type = cells[2].strip().lower()
+    if field_type not in _SCHEMA_TABLE_TYPES and not (
+            field_type.startswith("enum: ") and 6 < len(field_type) <= 80):
+        return False
+    preceding = text[max(0, line_start - 4096):line_start].splitlines()
+    rows = []
+    for row in reversed(preceding):
+        if not row.lstrip().startswith("|"):
+            break
+        rows.append(row)
+        if len(rows) > 64:
+            return False
+    rows.reverse()
+    header = re.sub(r"\s", "", rows[0]).lower() if rows else ""
+    return (len(rows) >= 2 and header == "|field|type|description|"
+            and re.fullmatch(r"[ \t]*\|[ \t]*:?-{3,}:?[ \t]*\|"
+                             r"[ \t]*:?-{3,}:?[ \t]*\|"
+                             r"[ \t]*:?-{3,}:?[ \t]*\|[ \t]*", rows[1]) is not None)
+
+
 # A literal domain listed as a URL host is not a local file dependency. Keep
 # this exception bounded to unescaped single-backtick prose; actual inventory
 # matches and explicit file/command uses still take precedence.
@@ -751,6 +808,9 @@ def _candidate_strings(
                             and inline_code_delimiter == 1
                             and (
                                 _is_documented_data_field(
+                                    text, line_offset + match.start, line_offset + match.end
+                                )
+                                or _is_documented_schema_table_field(
                                     text, line_offset + match.start, line_offset + match.end
                                 )
                                 or _is_documented_url_hostname(
