@@ -156,13 +156,29 @@ _SCHEMA_TABLE_TYPES = frozenset({
 _SCHEMA_FILE_SUFFIXES = frozenset({
     "json", "md", "py", "js", "ts", "jsx", "tsx", "sh", "yaml", "yml",
     "toml", "txt", "csv", "sql", "ini", "env", "html", "xml", "css",
+    "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "pdf", "jar",
+    "exe", "bat", "cmd", "ps1", "dll", "so", "dylib", "wasm", "bin",
+    "go", "rs", "c", "h", "java", "class", "lock", "db", "sqlite",
 })
+_SCHEMA_API_HEADING = re.compile(
+    r"^#{1,6}[ \\t]+(?:(?:webhook|api|http|json|request|response|event)"
+    r"\\b[^\\r\\n]{0,80}\\b(?:fields?|schema|properties)|"
+    r"(?:fields?|schema|properties)\\b[^\\r\\n]{0,80}\\b"
+    r"(?:webhook|api|http|json|request|response|event))\\b",
+    re.IGNORECASE,
+)
+_SCHEMA_ARTIFACT_HEADING = re.compile(
+    r"\\b(?:required[ \\t]+)?(?:scripts?|files?|artifacts?|dependencies|"
+    r"executables?|commands?|binaries|attachments?)\\b",
+    re.IGNORECASE,
+)
 
 
 def _is_documented_schema_table_field(text: str, start: int, end: int) -> bool:
     """Match bounded Markdown API property rows, never a real missing file."""
     field = text[start:end]
-    if end - start > 128 or _DOTTED_IDENTIFIER.fullmatch(field) is None:
+    if (end - start > 128 or _DOTTED_IDENTIFIER.fullmatch(field) is None
+            or not field.startswith(("data.", "meta."))):
         return False
     if field.rsplit(".", 1)[-1].lower() in _SCHEMA_FILE_SUFFIXES:
         return False
@@ -196,10 +212,18 @@ def _is_documented_schema_table_field(text: str, start: int, end: int) -> bool:
             return False
     rows.reverse()
     header = re.sub(r"\s", "", rows[0]).lower() if rows else ""
-    return (len(rows) >= 2 and header == "|field|type|description|"
-            and re.fullmatch(r"[ \t]*\|[ \t]*:?-{3,}:?[ \t]*\|"
-                             r"[ \t]*:?-{3,}:?[ \t]*\|"
-                             r"[ \t]*:?-{3,}:?[ \t]*\|[ \t]*", rows[1]) is not None)
+    if (len(rows) < 2 or header != "|field|type|description|" or
+            re.fullmatch(r"[ \t]*\|[ \t]*:?-{3,}:?[ \t]*\|"
+                         r"[ \t]*:?-{3,}:?[ \t]*\|"
+                         r"[ \t]*:?-{3,}:?[ \t]*\|[ \t]*", rows[1]) is None):
+        return False
+    # Typed columns alone are ambiguous: require an actual nearby API heading.
+    # A table of required scripts must never make a missing file disappear.
+    header_offset = line_start - sum(len(row) + 1 for row in rows)
+    nearby = text[max(0, header_offset - 256):header_offset].splitlines()
+    heading = next((row.strip() for row in reversed(nearby) if row.lstrip().startswith("#")), "")
+    return (_SCHEMA_API_HEADING.match(heading) is not None
+            and _SCHEMA_ARTIFACT_HEADING.search(heading) is None)
 
 
 # A literal domain listed as a URL host is not a local file dependency. Keep
@@ -638,6 +662,12 @@ def _candidate_strings(
             in_frontmatter = line_in_frontmatter = True
         elif in_frontmatter and frontmatter_marker in {"---", "..."}:
             in_frontmatter = False
+        # In GFM, inline code cannot cross Markdown table cell/row boundaries.
+        # Do not let an unmatched tick on an earlier row taint the next row.
+        if (stripped_line.lstrip().startswith("|")
+                and stripped_line.rstrip().endswith("|")
+                and active_fence is None and not in_html and not in_frontmatter):
+            inline_code_delimiter = None
         line_started_in_inline_code = inline_code_delimiter is not None
         block_line, quote_depth, has_list, prefix_width = _markdown_block_view(stripped_line)
         fence_match = _MARKDOWN_FENCE.fullmatch(block_line)
