@@ -183,8 +183,8 @@ def _is_documented_schema_table_field(text: str, start: int, end: int) -> bool:
             or _DATA_FIELD_FILE_CONTEXT.search(cells[3])):
         return False
     field_type = cells[2].strip().lower()
-    if field_type not in _SCHEMA_TABLE_TYPES and not (
-            field_type.startswith("enum: ") and 6 < len(field_type) <= 80):
+    if field_type not in _SCHEMA_TABLE_TYPES and re.fullmatch(
+            r"enum: [a-z0-9_.-]+(?:, [a-z0-9_.-]+){0,8}", field_type) is None:
         return False
     preceding = text[max(0, line_start - 4096):line_start].splitlines()
     rows = []
