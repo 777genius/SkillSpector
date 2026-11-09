@@ -159,6 +159,9 @@ _SCHEMA_FILE_SUFFIXES = frozenset({
     "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "pdf", "jar",
     "exe", "bat", "cmd", "ps1", "dll", "so", "dylib", "wasm", "bin",
     "go", "rs", "c", "h", "java", "class", "lock", "db", "sqlite",
+    "svg", "png", "jpg", "jpeg", "gif", "webp", "proto", "properties",
+    "conf", "cfg", "log", "patch", "diff", "mjs", "cjs", "ipynb",
+    "doc", "docx", "xlsx", "pptx", "pem", "crt", "key", "pub",
 })
 _SCHEMA_API_HEADING = re.compile(
     r"^#{1,6}[ \t]+(?:(?:webhook|api|http|json|request|response|event)"
@@ -219,7 +222,10 @@ def _is_documented_schema_table_field(text: str, start: int, end: int) -> bool:
     # Typed columns alone are ambiguous: require an actual nearby API heading.
     # A table of required scripts must never make a missing file disappear.
     header_offset = line_start - sum(len(row) + 1 for row in rows)
-    nearby = text[max(0, header_offset - 256):header_offset].splitlines()
+    # One API section may contain several webhook event tables. The nearest
+    # heading must still describe API fields; a later artifact heading revokes
+    # that proof. The bound prevents leaking context across unrelated sections.
+    nearby = text[max(0, header_offset - 8192):header_offset].splitlines()
     heading = next((row.strip() for row in reversed(nearby) if row.lstrip().startswith("#")), "")
     return (_SCHEMA_API_HEADING.match(heading) is not None
             and _SCHEMA_ARTIFACT_HEADING.search(heading) is None)
