@@ -145,6 +145,39 @@ def _is_documented_data_field(text: str, start: int, end: int) -> bool:
     )
 
 
+# Treat one exact, typed Markdown API schema row as documentation, not a file.
+# Real inventory matches, commands and file-bearing descriptions still win.
+_API_SCHEMA_TABLE_ROW = re.compile(
+    r"^[ \t]*\\|[ \t]*`(?P<field>(?:response\\.)?(?:data|meta)\\.[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)`"
+    r"[ \t]*\\|[ \t]*(?:uuid|string|integer|number|boolean|float|timestamp|"
+    r"enum(?:[ \t]*:[ \t]*[A-Za-z0-9_, -]{1,64})?)[ \t]*\\|"
+    r"[ \t]*(?P<description>[^|\\r\\n]{1,200})[ \t]*\\|[ \t]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_documented_api_schema_table_field(text: str, start: int, end: int) -> bool:
+    if end - start > 128 or _DOTTED_IDENTIFIER.fullmatch(text, start, end) is None:
+        return False
+    if start < 1 or end >= len(text) or text[start - 1] != "`" or text[end] != "`":
+        return False
+    # Only one complete, bounded Markdown row; never borrow a heading or
+    # documentation context from another line.
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", end)
+    if line_end == -1:
+        line_end = len(text)
+    if line_end - line_start > 320:
+        return False
+    row = _API_SCHEMA_TABLE_ROW.fullmatch(text[line_start:line_end])
+    return (
+        row is not None
+        and (start, end)
+        == (line_start + row.start("field"), line_start + row.end("field"))
+        and _DATA_FIELD_FILE_CONTEXT.search(row.group("description")) is None
+    )
+
+
 # A literal domain listed as a URL host is not a local file dependency. Keep
 # this exception bounded to unescaped single-backtick prose; actual inventory
 # matches and explicit file/command uses still take precedence.
@@ -760,6 +793,9 @@ def _candidate_strings(
                                     text, line_offset + match.start, line_offset + match.end
                                 )
                                 or _is_documented_api_coverage_field(
+                                    text, line_offset + match.start, line_offset + match.end
+                                )
+                                or _is_documented_api_schema_table_field(
                                     text, line_offset + match.start, line_offset + match.end
                                 )
                             ),
