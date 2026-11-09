@@ -125,6 +125,48 @@ def test_dangling_tick_in_prior_schema_row_does_not_leak_to_next_row(tmp_path: P
     assert not any("data.id" in r["evidence"] for r in result.records)
 
 
+def test_repeated_webhook_event_tables_share_the_nearest_api_heading(tmp_path: Path) -> None:
+    # Matches an actual Telnyx SKILL.md: one heading precedes five independent
+    # tables, separated by event labels, so the last table can be >4 KiB away.
+    body = "### Webhook payload fields\n\n"
+    for event in range(5):
+        body += f"**fax.event.{event}**\n\n" + HEADER
+        body += "| `data.id` | uuid | Identifies the resource. |\n"
+        body += "| `meta.attempt` | integer | Delivery attempt number. |\n"
+        body += "| `data.event_type` | enum: fax.delivered | Event kind. |\n"
+        body += "| `scripts/setup.sh` | string | Run the local setup script. |\n\n"
+        body += "The event includes public webhook properties.\n\n" * 10
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert not any("data.id" in r["evidence"] for r in result.records)
+    assert not any("meta.attempt" in r["evidence"] for r in result.records)
+    assert not any("data.event_type" in r["evidence"] for r in result.records)
+    assert any(r["status"] == "missing" and "scripts/setup.sh" in r["evidence"]
+               for r in result.records)
+
+
+def test_nearer_artifact_heading_revokes_api_schema_exemption(tmp_path: Path) -> None:
+    body = "### Webhook payload fields\n\n" + HEADER
+    body += "| `data.id` | uuid | A response property. |\n\n"
+    body += "### Required scripts\n\n" + HEADER
+    body += "| `data.id` | uuid | A file required by the CLI. |\n"
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert any(r["status"] == "missing" and "data.id" in r["evidence"]
+               for r in result.records)
+
+
+def test_explicit_artifact_suffixes_stay_missing_in_api_table(tmp_path: Path) -> None:
+    for filename in ("data.zip", "data.proto", "data.svg", "data.properties", "data.mjs"):
+        result = resolve(
+            tmp_path, "### Webhook payload fields\n\n" + HEADER
+            + f"| `{filename}` | string | A documented value. |",
+        )
+        assert any(r["status"] == "missing" and filename in r["evidence"]
+                   for r in result.records)
+
+
+
 def test_schema_heading_required_for_typed_dotted_fields(tmp_path: Path) -> None:
     body = "### General table\n\n" + HEADER
     body += "| `data.id` | uuid | A value. |"
@@ -134,7 +176,9 @@ def test_schema_heading_required_for_typed_dotted_fields(tmp_path: Path) -> None
 
 def test_real_inventory_wins_over_schema_exemption(tmp_path: Path) -> None:
     result = resolve(
-        tmp_path, HEADER + "| `data.id` | uuid | An identifier. |",
+        tmp_path,
+        "### Webhook payload fields\n\n" + HEADER
+        + "| `data.id` | uuid | An identifier. |",
         ["data.id"],
     )
     assert result.complete
