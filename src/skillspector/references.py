@@ -148,10 +148,10 @@ def _is_documented_data_field(text: str, start: int, end: int) -> bool:
 # Treat one exact, typed Markdown API schema row as documentation, not a file.
 # Real inventory matches, commands and file-bearing descriptions still win.
 _API_SCHEMA_TABLE_ROW = re.compile(
-    r"^[ \t]*\\|[ \t]*`(?P<field>(?:response\\.)?(?:data|meta)\\.[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*)`"
-    r"[ \t]*\\|[ \t]*(?:uuid|string|integer|number|boolean|float|timestamp|"
-    r"enum(?:[ \t]*:[ \t]*[A-Za-z0-9_, -]{1,64})?)[ \t]*\\|"
-    r"[ \t]*(?P<description>[^|\\r\\n]{1,200})[ \t]*\\|[ \t]*$",
+    r"^[ \t]*\|[ \t]*`(?P<field>(?:response\.)?(?:data|meta)\.[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)`"
+    r"[ \t]*\|[ \t]*(?:uuid|string|integer|number|boolean|float|timestamp|"
+    r"enum(?:[ \t]*:[ \t]*[A-Za-z0-9_, -]{1,64})?)[ \t]*\|"
+    r"[ \t]*(?P<description>[^|\r\n]{1,200})[ \t]*\|[ \t]*$",
     re.IGNORECASE,
 )
 
