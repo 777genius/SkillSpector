@@ -12,13 +12,14 @@ from typer.testing import CliRunner
 from skillspector.cli import app
 from skillspector.references import resolve_bundle_references_with_metadata
 
-
 HEADER = "| Field | Type | Description |\n|-------|------|-------------|\n"
 
 
 def resolve(root: Path, body: str, files: list[str] | None = None):
     return resolve_bundle_references_with_metadata(
-        root, source_path="SKILL.md", source_text=body,
+        root,
+        source_path="SKILL.md",
+        source_text=body,
         known_paths=["SKILL.md", *(files or [])],
     )
 
@@ -34,7 +35,10 @@ def resolve(root: Path, body: str, files: list[str] | None = None):
     ],
 )
 def test_realistic_typed_webhook_fields_are_not_missing(
-    tmp_path: Path, field: str, kind: str, description: str,
+    tmp_path: Path,
+    field: str,
+    kind: str,
+    description: str,
 ) -> None:
     body = "### Webhook payload fields\n\n" + HEADER
     body += f"| `{field}` | {kind} | {description} |\n"
@@ -57,8 +61,9 @@ def test_multiple_documented_field_rows_keep_other_true_missing_references(tmp_p
     assert result.complete
     assert not any("data.id" in row["evidence"] for row in result.records)
     assert not any("data.payload.from" in row["evidence"] for row in result.records)
-    assert any(row["status"] == "missing" and "scripts/run.sh" in row["evidence"]
-               for row in result.records)
+    assert any(
+        row["status"] == "missing" and "scripts/run.sh" in row["evidence"] for row in result.records
+    )
 
 
 @pytest.mark.parametrize(
@@ -76,12 +81,12 @@ def test_multiple_documented_field_rows_keep_other_true_missing_references(tmp_p
     ],
 )
 def test_unverified_schema_context_never_hides_missing_reference(
-    tmp_path: Path, body: str,
+    tmp_path: Path,
+    body: str,
 ) -> None:
     result = resolve(tmp_path, body)
     assert result.complete
     assert any(row["status"] == "missing" for row in result.records)
-
 
 
 def test_blank_line_ends_schema_table(tmp_path: Path) -> None:
@@ -91,18 +96,24 @@ def test_blank_line_ends_schema_table(tmp_path: Path) -> None:
     result = resolve(tmp_path, body)
     assert result.complete
     assert not any("data.id" in row["evidence"] for row in result.records)
-    assert any(row["status"] == "missing" and "data.payload.to" in row["evidence"]
-               for row in result.records)
+    assert any(
+        row["status"] == "missing" and "data.payload.to" in row["evidence"]
+        for row in result.records
+    )
 
 
-@pytest.mark.parametrize("heading", [
-    "### Required scripts",
-    "### Required files",
-    "### Webhook required scripts",
-    "### Local artifacts",
-])
+@pytest.mark.parametrize(
+    "heading",
+    [
+        "### Required scripts",
+        "### Required files",
+        "### Webhook required scripts",
+        "### Local artifacts",
+    ],
+)
 def test_required_file_list_is_never_an_api_schema_exemption(
-    tmp_path: Path, heading: str,
+    tmp_path: Path,
+    heading: str,
 ) -> None:
     body = heading + "\n\n" + HEADER + "| `data.id` | string | A local file. |"
     result = resolve(tmp_path, body)
@@ -144,8 +155,9 @@ def test_repeated_webhook_event_tables_share_the_nearest_api_heading(tmp_path: P
     assert not any("data.id" in r["evidence"] for r in result.records)
     assert not any("meta.attempt" in r["evidence"] for r in result.records)
     assert not any("data.event_type" in r["evidence"] for r in result.records)
-    assert any(r["status"] == "missing" and "scripts/setup.sh" in r["evidence"]
-               for r in result.records)
+    assert any(
+        r["status"] == "missing" and "scripts/setup.sh" in r["evidence"] for r in result.records
+    )
 
 
 def test_nearer_artifact_heading_revokes_api_schema_exemption(tmp_path: Path) -> None:
@@ -155,19 +167,18 @@ def test_nearer_artifact_heading_revokes_api_schema_exemption(tmp_path: Path) ->
     body += "| `data.id` | uuid | A file required by the CLI. |\n"
     result = resolve(tmp_path, body)
     assert result.complete
-    assert any(r["status"] == "missing" and "data.id" in r["evidence"]
-               for r in result.records)
+    assert any(r["status"] == "missing" and "data.id" in r["evidence"] for r in result.records)
 
 
 def test_explicit_artifact_suffixes_stay_missing_in_api_table(tmp_path: Path) -> None:
     for filename in ("data.zip", "data.proto", "data.svg", "data.properties", "data.mjs"):
         result = resolve(
-            tmp_path, "### Webhook payload fields\n\n" + HEADER
+            tmp_path,
+            "### Webhook payload fields\n\n"
+            + HEADER
             + f"| `{filename}` | string | A documented value. |",
         )
-        assert any(r["status"] == "missing" and filename in r["evidence"]
-                   for r in result.records)
-
+        assert any(r["status"] == "missing" and filename in r["evidence"] for r in result.records)
 
 
 def test_schema_heading_required_for_typed_dotted_fields(tmp_path: Path) -> None:
@@ -177,11 +188,11 @@ def test_schema_heading_required_for_typed_dotted_fields(tmp_path: Path) -> None
     assert result.complete
     assert any(r["status"] == "missing" and "data.id" in r["evidence"] for r in result.records)
 
+
 def test_real_inventory_wins_over_schema_exemption(tmp_path: Path) -> None:
     result = resolve(
         tmp_path,
-        "### Webhook payload fields\n\n" + HEADER
-        + "| `data.id` | uuid | An identifier. |",
+        "### Webhook payload fields\n\n" + HEADER + "| `data.id` | uuid | An identifier. |",
         ["data.id"],
     )
     assert result.complete
@@ -194,25 +205,31 @@ def test_real_no_llm_cli_verifies_typed_webhook_field_and_missing_script(tmp_pat
     skill = tmp_path / "SKILL.md"
     skill.write_text(
         "---\nname: schema-table-proof\ndescription: Documents an API payload.\n---\n"
-        "### Webhook payload fields\n\n" + HEADER
+        "### Webhook payload fields\n\n"
+        + HEADER
         + "| `data.id` | uuid | Identifies the resource. |\n"
         + "| `data.event_type` | enum: delivered | The type of event. |\n",
         encoding="utf-8",
     )
     ok = CliRunner().invoke(
-        app, ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"],
+        app,
+        ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"],
     )
     assert ok.exit_code == 0, ok.output
     report = json.loads(ok.stdout)
     assert report["execution_successful"] is True
-    assert not any("data.id" in row["evidence"] for row in
-                   report["analysis_completeness"]["references"])
+    assert not any(
+        "data.id" in row["evidence"] for row in report["analysis_completeness"]["references"]
+    )
 
     skill.write_text(skill.read_text() + "\nRun `bash scripts/setup.sh`.\n", encoding="utf-8")
     partial = CliRunner().invoke(
-        app, ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"],
+        app,
+        ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"],
     )
     assert partial.exit_code in (0, 1), partial.output
     incomplete = json.loads(partial.stdout)
-    assert any(row["status"] == "missing" and "scripts/setup.sh" in row["evidence"]
-               for row in incomplete["analysis_completeness"]["references"])
+    assert any(
+        row["status"] == "missing" and "scripts/setup.sh" in row["evidence"]
+        for row in incomplete["analysis_completeness"]["references"]
+    )
