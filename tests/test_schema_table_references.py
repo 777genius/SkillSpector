@@ -70,8 +70,6 @@ def test_multiple_documented_field_rows_keep_other_true_missing_references(tmp_p
         HEADER + "| `config.json` | string | Setting. |",
         HEADER + "| `data.id` | uuid | A property. | extra |",
         "```markdown\n" + HEADER + "| `data.id` | uuid | An identifier. |\n```",
-        HEADER + "| `data.id` | uuid | An identifier. |\n\n"
-        "| `data.payload.to` | string | Phone number. |",
     ],
 )
 def test_unverified_schema_context_never_hides_missing_reference(
@@ -81,6 +79,58 @@ def test_unverified_schema_context_never_hides_missing_reference(
     assert result.complete
     assert any(row["status"] == "missing" for row in result.records)
 
+
+
+def test_blank_line_ends_schema_table(tmp_path: Path) -> None:
+    body = "### Webhook payload fields\n\n" + HEADER
+    body += "| `data.id` | uuid | An identifier. |\n\n"
+    body += "| `data.payload.to` | string | Phone number. |"
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert not any("data.id" in row["evidence"] for row in result.records)
+    assert any(row["status"] == "missing" and "data.payload.to" in row["evidence"]
+               for row in result.records)
+
+
+@pytest.mark.parametrize("heading", [
+    "### Required scripts",
+    "### Required files",
+    "### Webhook required scripts",
+    "### Local artifacts",
+])
+def test_required_file_list_is_never_an_api_schema_exemption(
+    tmp_path: Path, heading: str,
+) -> None:
+    body = heading + "\n\n" + HEADER + "| `data.id` | string | A local file. |"
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert any(r["status"] == "missing" and "data.id" in r["evidence"] for r in result.records)
+
+
+@pytest.mark.parametrize("filename", ["data.zip", "data.jar", "data.wasm", "data.pdf"])
+def test_file_like_schema_names_remain_missing(tmp_path: Path, filename: str) -> None:
+    body = "### Webhook payload fields\n\n" + HEADER
+    body += f"| `{filename}` | string | A value. |"
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert any(r["status"] == "missing" and filename in r["evidence"] for r in result.records)
+
+
+def test_dangling_tick_in_prior_schema_row_does_not_leak_to_next_row(tmp_path: Path) -> None:
+    body = "### Webhook payload fields\n\n" + HEADER
+    body += "| unknown `dangling | string | An example. |\n"
+    body += "| `data.id` | uuid | Identifies the resource. |"
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert not any("data.id" in r["evidence"] for r in result.records)
+
+
+def test_schema_heading_required_for_typed_dotted_fields(tmp_path: Path) -> None:
+    body = "### General table\n\n" + HEADER
+    body += "| `data.id` | uuid | A value. |"
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert any(r["status"] == "missing" and "data.id" in r["evidence"] for r in result.records)
 
 def test_real_inventory_wins_over_schema_exemption(tmp_path: Path) -> None:
     result = resolve(
