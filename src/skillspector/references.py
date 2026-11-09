@@ -161,18 +161,17 @@ _SCHEMA_FILE_SUFFIXES = frozenset({
     "go", "rs", "c", "h", "java", "class", "lock", "db", "sqlite",
 })
 _SCHEMA_API_HEADING = re.compile(
-    r"^#{1,6}[ \\t]+(?:(?:webhook|api|http|json|request|response|event)"
-    r"\\b[^\\r\\n]{0,80}\\b(?:fields?|schema|properties)|"
-    r"(?:fields?|schema|properties)\\b[^\\r\\n]{0,80}\\b"
-    r"(?:webhook|api|http|json|request|response|event))\\b",
+    r"^#{1,6}[ \t]+(?:(?:webhook|api|http|json|request|response|event)"
+    r"\b[^\r\n]{0,80}\b(?:fields?|schema|properties)|"
+    r"(?:fields?|schema|properties)\b[^\r\n]{0,80}\b"
+    r"(?:webhook|api|http|json|request|response|event))\b",
     re.IGNORECASE,
 )
 _SCHEMA_ARTIFACT_HEADING = re.compile(
-    r"\\b(?:required[ \\t]+)?(?:scripts?|files?|artifacts?|dependencies|"
-    r"executables?|commands?|binaries|attachments?)\\b",
+    r"\b(?:required[ \t]+)?(?:scripts?|files?|artifacts?|dependencies|"
+    r"executables?|commands?|binaries|attachments?)\b",
     re.IGNORECASE,
 )
-
 
 def _is_documented_schema_table_field(text: str, start: int, end: int) -> bool:
     """Match bounded Markdown API property rows, never a real missing file."""
