@@ -22,8 +22,6 @@ from skillspector.references import resolve_bundle_references_with_metadata
          ["SKILL.md", "components/accordion.md", "components/forms/button.md"], "components"),
         ("docs/SKILL.md", "See [components](../components/).",
          ["docs/SKILL.md", "components/accordion.md"], "components"),
-        ("SKILL.md", "See [components](components/%2F).",
-         ["SKILL.md", "components/accordion.md"], "components"),
     ],
 )
 def test_explicit_markdown_directory_link_uses_only_bounded_known_descendants(
@@ -34,15 +32,17 @@ def test_explicit_markdown_directory_link_uses_only_bounded_known_descendants(
     )
     assert result.complete is True
     assert len(result.records) == 1
-    assert result.records[0]["status"] == "resolved"
+    assert result.records[0]["status"] == "uninspected"
     assert result.records[0]["target_path"] == expected
-    assert result.records[0]["disposition"] == "analyzed"
+    assert result.records[0]["disposition"] == "partial"
     assert result.records[0]["reference_kind"] == "markdown_link"
 
 
 @pytest.mark.parametrize(
     ("source", "known", "expected"),
     [
+        ("See [components](components/%2F).",
+         ["SKILL.md", "components/accordion.md"], "missing"),
         ("See [components](./components/).",
          ["SKILL.md", "components-extra/accordion.md"], "missing"),
         ("See [components](./components/).",
@@ -108,7 +108,8 @@ def test_cli_directory_link_is_resolved_but_real_missing_script_remains_partial(
     result = json.loads(run.stdout)
     references = result["analysis_completeness"]["references"]
     assert any(
-        r["status"] == "resolved" and r["target_path"] == "components"
+        r["status"] == "uninspected" and r["target_path"] == "components"
+        and r["disposition"] == "partial"
         and r["reference_kind"] == "markdown_link"
         for r in references
     )
@@ -117,4 +118,7 @@ def test_cli_directory_link_is_resolved_but_real_missing_script_remains_partial(
         and r["target_path"] is None
         for r in references
     )
+    assert "referenced_uninspected" in {
+        e["reason_code"] for e in result["analysis_completeness"]["ledger_exceptions"]
+    }
     assert result["analysis_completeness"]["is_complete"] is False
