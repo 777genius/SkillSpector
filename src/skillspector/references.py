@@ -1120,8 +1120,17 @@ def resolve_bundle_references_with_metadata(
 
     known = set(known_paths)
     basename_index: dict[str, list[str]] = {}
+    # Only ancestors proved by an already admitted file can be considered
+    # existing directories. Do not enumerate the host filesystem or expand
+    # the bounded acquired source inventory.
+    known_directories: set[str] = set()
     for path in sorted(known):
-        basename_index.setdefault(PurePosixPath(path).name, []).append(path)
+        file_path = PurePosixPath(path)
+        basename_index.setdefault(file_path.name, []).append(path)
+        known_directories.update(
+            parent.as_posix() for parent in file_path.parents
+            if parent != PurePosixPath(".")
+        )
 
     candidates, candidate_limitations = _candidate_strings(
         bounded_source,
@@ -1155,6 +1164,17 @@ def resolve_bundle_references_with_metadata(
             # could reintroduce a path omitted by an artifact, depth, or
             # runtime limit and silently expand analyzer work past that bound.
             if target in known:
+                resolved_target = target
+                status = "resolved"
+                disposition = ArtifactDisposition.ANALYZED
+            elif (
+                reference_kind is ReferenceKind.MARKDOWN_LINK
+                and unquote(urlsplit(raw.strip()).path).replace("\\", "/").endswith("/")
+                and target in known_directories
+            ):
+                # A trailing-slash Markdown navigation link refers to an
+                # observed directory, not a missing file dependency. No
+                # unacquired descendants are considered inspected.
                 resolved_target = target
                 status = "resolved"
                 disposition = ArtifactDisposition.ANALYZED
