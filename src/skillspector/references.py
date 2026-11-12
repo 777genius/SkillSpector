@@ -1120,17 +1120,8 @@ def resolve_bundle_references_with_metadata(
 
     known = set(known_paths)
     basename_index: dict[str, list[str]] = {}
-    # Only ancestors proved by an already admitted file can be considered
-    # existing directories. Do not enumerate the host filesystem or expand
-    # the bounded acquired source inventory.
-    known_directories: set[str] = set()
     for path in sorted(known):
-        file_path = PurePosixPath(path)
-        basename_index.setdefault(file_path.name, []).append(path)
-        known_directories.update(
-            parent.as_posix() for parent in file_path.parents
-            if parent != PurePosixPath(".")
-        )
+        basename_index.setdefault(PurePosixPath(path).name, []).append(path)
 
     candidates, candidate_limitations = _candidate_strings(
         bounded_source,
@@ -1167,17 +1158,6 @@ def resolve_bundle_references_with_metadata(
                 resolved_target = target
                 status = "resolved"
                 disposition = ArtifactDisposition.ANALYZED
-            elif (
-                reference_kind is ReferenceKind.MARKDOWN_LINK
-                and unquote(urlsplit(raw.strip()).path).replace("\\", "/").endswith("/")
-                and target in known_directories
-            ):
-                # A trailing-slash Markdown navigation link refers to an
-                # observed directory, not a missing file dependency. No
-                # unacquired descendants are considered inspected.
-                resolved_target = target
-                status = "resolved"
-                disposition = ArtifactDisposition.ANALYZED
             elif "/" not in unquote(raw).replace("\\", "/"):
                 matches = basename_index.get(PurePosixPath(target).name, [])
                 if len(matches) == 1:
@@ -1191,7 +1171,18 @@ def resolve_bundle_references_with_metadata(
                     status = "missing"
                     disposition = ArtifactDisposition.PARTIAL
             else:
-                status = "missing"
+                # An acquired descendant proves that the directory exists,
+                # but NOT that the subtree was completely analyzed. This is
+                # an uninspected dependency, never an inferred Complete.
+                if (
+                    reference_kind is ReferenceKind.MARKDOWN_LINK
+                    and urlsplit(raw.strip()).path.endswith("/")
+                    and any(path.startswith(target + "/") for path in known)
+                ):
+                    resolved_target = target
+                    status = "uninspected"
+                else:
+                    status = "missing"
                 disposition = ArtifactDisposition.PARTIAL
         # Real inventory matches (including ambiguity) always take precedence
         # over prose. An independent file use of the same token stays a record.
