@@ -1171,7 +1171,18 @@ def resolve_bundle_references_with_metadata(
                     status = "missing"
                     disposition = ArtifactDisposition.PARTIAL
             else:
-                status = "missing"
+                # An acquired descendant proves that the directory exists,
+                # but NOT that the subtree was completely analyzed. This is
+                # an uninspected dependency, never an inferred Complete.
+                if (
+                    reference_kind is ReferenceKind.MARKDOWN_LINK
+                    and urlsplit(raw.strip()).path.endswith("/")
+                    and any(path.startswith(target + "/") for path in known)
+                ):
+                    resolved_target = target
+                    status = "uninspected"
+                else:
+                    status = "missing"
                 disposition = ArtifactDisposition.PARTIAL
         # Real inventory matches (including ambiguity) always take precedence
         # over prose. An independent file use of the same token stays a record.
