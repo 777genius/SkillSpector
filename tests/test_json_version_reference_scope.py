@@ -99,7 +99,7 @@ def test_real_no_llm_cli_missing_executable_remains_incomplete(tmp_path: Path) -
     root = _write_skill(
         tmp_path,
         '\x60\x60\x60json\n{\n"VERSION": "1.0.0"\n}\n\x60\x60\x60\n'
-        "Run \x60python3 scripts/required.sh\x60 before continuing.\n"
+        "Run \x60python3 scripts/required.sh\x60 before continuing.\n",
     )
     original = (root / "SKILL.md").read_bytes()
     result = CliRunner().invoke(
