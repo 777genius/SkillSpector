@@ -40,6 +40,7 @@ from skillspector.artifacts import (
     ArtifactDisposition,
     ArtifactRecord,
     ContentKind,
+    ReferenceKind,
     binary_instruction_view,
     classify_artifact,
     decode_text,
@@ -2912,7 +2913,14 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
                 start_line=int(reference["line"]),
                 end_line=int(reference["line"]),
                 reason=(
-                    LedgerReason.REFERENCE_MISSING
+                    # An explicit interpreter operand is a required executable
+                    # dependency, not a passive unbundled reference caveat.
+                    # Keep missing command paths incomplete even when every
+                    # other static analyzer has finished.
+                    LedgerReason.REFERENCED_UNINSPECTED
+                    if reference["status"] == "missing"
+                    and reference.get("reference_kind") == ReferenceKind.INLINE_COMMAND
+                    else LedgerReason.REFERENCE_MISSING
                     if reference["status"] == "missing"
                     else LedgerReason.REFERENCED_UNINSPECTED
                     if reference["status"] == "uninspected"
