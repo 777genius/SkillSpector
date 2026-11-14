@@ -72,11 +72,8 @@ def test_numeric_filename_markdown_link_still_resolves(tmp_path: Path) -> None:
 def _write_skill(tmp_path: Path, body: str) -> Path:
     root = tmp_path / "skill"
     root.mkdir()
-    (root / "SKILL.md").write_text(
-        "---\nname: json-version-contract\ndescription: Verify JSON metadata.\n---\n"
-        + body,
-        encoding="utf-8",
-    )
+    header = "---\nname: json-version-contract\ndescription: Verify JSON metadata.\n---\n"
+    (root / "SKILL.md").write_text(header + body, encoding="utf-8")
     return root
 
 
