@@ -36,12 +36,12 @@ def test_strict_json_version_is_only_metadata(tmp_path: Path, source: str) -> No
         ('"VERSION": "1.x",\n', "missing"),
         ('"VERSION": "0.0.0.0",\n', "missing"),
         ('"VERSION": "1.0.0", "file": "missing.md"\n', "missing"),
-        ('\x60data.coverage\x60\n', "missing"),
-        ('[VERSION file](1.0.0)\n', "missing"),
-        ('Read [missing.md](missing.md)\n', "missing"),
-        ('Run \x60python3 scripts/required.sh\x60.\n', "missing"),
-        ('Use \x60runtime/generated.json\x60.\n', "missing"),
-        ('[outside](../outside.md)\n', "rejected"),
+        ("\x60data.coverage\x60\n", "missing"),
+        ("[VERSION file](1.0.0)\n", "missing"),
+        ("Read [missing.md](missing.md)\n", "missing"),
+        ("Run \x60python3 scripts/required.sh\x60.\n", "missing"),
+        ("Use \x60runtime/generated.json\x60.\n", "missing"),
+        ("[outside](../outside.md)\n", "rejected"),
     ],
 )
 def test_other_version_shapes_and_real_dependencies_are_not_exempt(
@@ -97,7 +97,8 @@ def test_real_no_llm_cli_only_version_completes(tmp_path: Path) -> None:
 
 def test_real_no_llm_cli_missing_executable_remains_incomplete(tmp_path: Path) -> None:
     root = _write_skill(
-        tmp_path, '\x60\x60\x60json\n{\n"VERSION": "1.0.0"\n}\n\x60\x60\x60\n'
+        tmp_path,
+        '\x60\x60\x60json\n{\n"VERSION": "1.0.0"\n}\n\x60\x60\x60\n'
         "Run \x60python3 scripts/required.sh\x60 before continuing.\n"
     )
     original = (root / "SKILL.md").read_bytes()
