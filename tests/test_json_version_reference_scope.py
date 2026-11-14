@@ -114,3 +114,30 @@ def test_real_no_llm_cli_missing_executable_remains_incomplete(tmp_path: Path) -
     )
     assert not any("1.0.0" in ref["evidence"] for ref in coverage["references"])
     assert (root / "SKILL.md").read_bytes() == original
+
+
+def test_missing_interpreter_operand_alone_cannot_be_complete_with_caveats(
+    tmp_path: Path,
+) -> None:
+    """A missing executable is not equivalent to a passive unbundled document."""
+    root = _write_skill(tmp_path, "Run `python3 scripts/required.sh` before continuing.\n")
+    before = (root / "SKILL.md").read_bytes()
+    result = CliRunner().invoke(
+        app, ["scan", str(root), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+    )
+    assert result.exit_code == 1, result.output
+    report = json.loads(result.stdout)
+    completeness = report["analysis_completeness"]
+    assert completeness["status"] == "partial"
+    assert completeness["is_complete"] is False
+    assert any(
+        ref["reference_kind"] == "inline_command"
+        and ref["status"] == "missing"
+        and ref["target_path"] is None
+        for ref in completeness["references"]
+    )
+    assert any(
+        row.get("reason_code") == "referenced_uninspected"
+        for row in completeness["ledger_exceptions"]
+    )
+    assert (root / "SKILL.md").read_bytes() == before
