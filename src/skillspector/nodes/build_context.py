@@ -2960,10 +2960,9 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
                 ):
                     continue
                 source_line = primary_lines[line_num - 1]
-                if (
-                    _REQUIRED_SIBLING_DIRECTIVE.search(source_line)
-                    and _REQUIRED_SIBLING_PATH.search(source_line)
-                ):
+                has_mandatory_directive = bool(_REQUIRED_SIBLING_DIRECTIVE.search(source_line))
+                has_sibling_path = bool(_REQUIRED_SIBLING_PATH.search(source_line))
+                if has_mandatory_directive and has_sibling_path:
                     mandatory_sibling_lines.add(line_num)
             for line_num in sorted(mandatory_sibling_lines):
                 reference_events.append(

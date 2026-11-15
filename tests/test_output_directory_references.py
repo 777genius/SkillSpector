@@ -151,7 +151,8 @@ def test_mandatory_unacquired_sibling_is_not_certified(
     assert coverage["status"] == ("partial" if required else "complete")
     assert coverage["is_complete"] is (not required)
     assert any(
-        ref["status"] == "rejected" and ref["disposition"] == "out_of_scope"
+        ref["status"] == "rejected"
+        and ref["disposition"] == "out_of_scope"
         and "../shared/SKILL.md" in ref["evidence"]
         for ref in coverage["references"]
     )
