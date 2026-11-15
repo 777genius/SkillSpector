@@ -1,0 +1,73 @@
+name: SkillSpector required remote primary instruction native E2E
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/required-remote-primary-e2e.yml'
+      - 'src/skillspector/nodes/build_context.py'
+      - 'tests/test_required_remote_primary_instructions.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          path: candidate
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nomadamas/k-skill
+          ref: 9766d20fb1fe1a5eb1d10ef5ff9872c8d6fc4985
+          sparse-checkout: boim-business-search
+          persist-credentials: false
+          path: actual-source
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Run Ruff and native pinned tests with no providers
+        run: |
+          python3 -m pip install --disable-pip-version-check uv==0.13.4
+          uv sync --directory candidate --frozen --extra dev --python 3.12
+          candidate/.venv/bin/ruff check candidate/src/skillspector/nodes/build_context.py candidate/tests/test_required_remote_primary_instructions.py
+          candidate/.venv/bin/ruff format --check candidate/src/skillspector/nodes/build_context.py candidate/tests/test_required_remote_primary_instructions.py
+          candidate/.venv/bin/python -m pytest -q candidate/tests/test_required_remote_primary_instructions.py
+      - name: Verify immutable Skill and run no-LLM source-bound scan
+        run: |
+          test "$(git -C actual-source rev-parse HEAD)" = 9766d20fb1fe1a5eb1d10ef5ff9872c8d6fc4985
+          test "$(git -C actual-source hash-object boim-business-search/SKILL.md)" = 46d272e3cadd9e87eeaba06ca60d90d8e91d5688
+          source_sha="$(sha256sum actual-source/boim-business-search/SKILL.md | cut -d ' ' -f 1)"
+          set +e
+          candidate/.venv/bin/skillspector scan "$GITHUB_WORKSPACE/actual-source/boim-business-search" \
+            --no-llm --format json --fail-on-incomplete > "$RUNNER_TEMP/remote-report.json"
+          code=$?
+          set -e
+          test "$code" -eq 1
+          test "$(sha256sum actual-source/boim-business-search/SKILL.md | cut -d ' ' -f 1)" = "$source_sha"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report=json.loads((Path(os.environ["RUNNER_TEMP"])/"remote-report.json").read_text())
+          c=report["analysis_completeness"]
+          assert report["execution_successful"] is True
+          assert c["status"] == "partial" and c["is_complete"] is False
+          assert any(x["reason_code"] == "referenced_uninspected"
+                     and x["path"] == "SKILL.md" for x in c["ledger_exceptions"])
+          assert report["suppressed_count"] == 0 and report["suppressed"] == []
+          print(json.dumps({"status": c["status"], "dynamic_uninspected": True,
+                            "findings":len(report["issues"]), "published": False}))
+          PY
+      - name: Preserve read-only evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: required-external-primary-immutable-evidence
+          path: ${{ runner.temp }}/remote-report.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -127,6 +127,19 @@ MAX_MANIFEST_OUTPUT_RECORDS = 1_024
 MAX_MANIFEST_OUTPUT_CHARACTERS = 256 * 1024
 _EXECUTABLE_PROBE_BYTES = 1024
 
+# Exact required, dynamically fetched primary-instruction CLI, not bundled
+# source content. Recognition records an uninspected dependency, NEVER runs it.
+_K_SKILL_REMOTE_PRIMARY_STANZA = re.compile(
+    r"(?m)^## Get the full instructions \(required first step\)\r?\n"
+    r"(?:[ \t]*\r?\n){0,2}"
+    r"Run this and follow its output as the primary instructions for this skill:\r?\n"
+    r"(?:[ \t]*\r?\n){0,2}"
+    r"\x60{3}bash\r?\n"
+    r"(?P<command>npx[ \t]+-y[ \t]+@nomadamas/k-skill@0[ \t]+"
+    r"instruct[ \t]+[a-z0-9-]{1,64})[ \t]*\r?\n"
+    r"\x60{3}[ \t]*(?:\r?\n|\Z)"
+)
+
 
 def _is_allowed_inactive_git_hook_template(path: str, probe: bytes) -> bool:
     """Return whether *path* is a direct inactive Git hook template.
@@ -2784,6 +2797,7 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
     references = []
     reference_events: list[InspectionLedgerEvent] = []
     reference_resolution: dict[str, object] = {}
+    primary_text: str | None = None
     inventory_by_path = {item["path"]: item for item in artifact_inventory}
     if primary_path is not None and primary_path in raw_file_cache:
         primary_raw = raw_file_cache[primary_path]
@@ -2904,6 +2918,25 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
                     limit_seconds=limit_seconds,
                 )
             )
+        # The immutable Skill bundle contains only a stub. Its stated full
+        # primary instructions are obtained dynamically from a moving npm CLI.
+        # Neither a local file count nor a passive missing-file caveat proves
+        # that these remote runtime instructions were inspected.
+        if isinstance(primary_text, str):
+            remote = _K_SKILL_REMOTE_PRIMARY_STANZA.search(primary_text)
+            if remote is not None:
+                remote_line = primary_text.count("\n", 0, remote.start("command")) + 1
+                reference_events.append(
+                    ledger_event(
+                        outcome=LedgerOutcome.PARTIAL,
+                        record_type=LedgerRecordType.SYSTEM,
+                        phase="reference_resolution",
+                        path=primary_path,
+                        start_line=remote_line,
+                        end_line=remote_line,
+                        reason=LedgerReason.REFERENCED_UNINSPECTED,
+                    )
+                )
         reference_events.extend(
             ledger_event(
                 outcome=LedgerOutcome.PARTIAL,
