@@ -1,0 +1,225 @@
+name: SkillSpector 2.13.4 generated reports source-bound E2E
+
+on:
+  pull_request:
+    paths:
+      - "src/skillspector/references.py"
+      - "tests/test_generated_report_output_references.py"
+      - ".github/workflows/v2134-generated-report-source-e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 777genius/SkillSpector
+          ref: c4816448b85fceaaf4291cb552e2de38562d1348
+          persist-credentials: false
+          path: old
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 777genius/SkillSpector
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          path: new
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: skillshop-ostyles/skillshop-agents
+          ref: 345dfaa595470e12e9fe4e123ada3f6a51fdf455
+          persist-credentials: false
+          sparse-checkout: |
+            plugins/agents-security/skills/authz-coverage-gap-detector
+            plugins/agents-runtime/skills/cache-effectiveness-auditor
+            plugins/agents-vibe/skills/stackcompass
+          path: source
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 777genius/universal-agent-plugins-registry
+          ref: 7771404dcdfc5b3855f1319b5e9a2bc19d0c7acf
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            reports/skillspector/v3/index.json
+            reports/skillspector/v3/shards/e756f5afcd13049010ae8d09e2597b8e2a2b186d0946db4e989d7e4b8210793c.json
+          path: original-v3
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Lock exact source and scanner identities, frozen dependencies
+        run: |
+          set -euo pipefail
+          test "$(git -C old rev-parse HEAD)" = c4816448b85fceaaf4291cb552e2de38562d1348
+          test "$(git -C new rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git -C source rev-parse HEAD)" = 345dfaa595470e12e9fe4e123ada3f6a51fdf455
+          test "$(git -C original-v3 rev-parse HEAD)" = 7771404dcdfc5b3855f1319b5e9a2bc19d0c7acf
+          python3 -m pip install --disable-pip-version-check uv==0.13.4
+          uv sync --directory old --frozen --no-dev --python 3.12
+          uv sync --directory new --frozen --extra dev --python 3.12
+      - name: Verify exact Ruff and fail-closed parser negatives
+        run: |
+          set -euo pipefail
+          new/.venv/bin/ruff check new/src/skillspector/references.py new/tests/test_generated_report_output_references.py
+          new/.venv/bin/ruff format --diff new/src/skillspector/references.py new/tests/test_generated_report_output_references.py || true
+          new/.venv/bin/ruff format --diff new/src/skillspector/references.py new/tests/test_generated_report_output_references.py || true
+          new/.venv/bin/ruff format --check new/src/skillspector/references.py new/tests/test_generated_report_output_references.py
+          new/.venv/bin/python -m pytest -q new/tests/test_generated_report_output_references.py
+      - name: Three immutable original report outputs with exact security parity
+        timeout-minutes: 22
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import collections, hashlib, json, os, re, subprocess, tempfile
+          from pathlib import Path
+
+          root=Path("original-v3/reports/skillspector/v3")
+          index=json.loads((root/"index.json").read_bytes())
+          assert index["schema_version"]==3
+          assert index["source_commit"]=="a12bd3bdffab6991a2541220a16a0a9d6447e47e"
+          assert index["scanner"]=={"id":"skillspector","version":"2.13.1",
+              "revision":"f3b25697d76256998ca9d42c198d256258d4c035"}
+          descriptor=next(x for x in index["shards"] if
+              x["repository"]=="skillshop-ostyles/skillshop-agents")
+          raw=(root/descriptor["path"]).read_bytes()
+          assert descriptor["path"]=="shards/e756f5afcd13049010ae8d09e2597b8e2a2b186d0946db4e989d7e4b8210793c.json"
+          assert descriptor["bytes"]==len(raw)==1391476
+          assert descriptor["digest"]=="sha256:"+hashlib.sha256(raw).hexdigest()
+          shard=json.loads(raw)
+          assert shard["schema_version"]==3 and shard["repository"]=="skillshop-ostyles/skillshop-agents"
+          assert len(shard["records"])==descriptor["record_count"]==119
+          cases=[
+              ("plugins/agents-security/skills/authz-coverage-gap-detector",
+               "3eab2f1f21ce29f4dcc090347a3388b5df49360c",
+               "sha256:f0b248890523769ed64d427cd7acb20b61f4dd8c0015c31e788c443aaa926f82",
+               57,"authz-coverage-report.md",4),
+              ("plugins/agents-runtime/skills/cache-effectiveness-auditor",
+               "85913ce1ae4c3d868009befd621c77f9f4c0bce9",
+               "sha256:c953c5019452af8fca0fe8ce2c75920d156dfcd5d10423362fa502e86a11d17f",
+               56,"cache-effectiveness-report.md",4),
+              ("plugins/agents-vibe/skills/stackcompass",
+               "81febd0547e2e86554300bc1b87210bec428b687",
+               "sha256:0c278d84a87fbd036f9894006c1854c167901694a08e4c71d9f7bb098aad4889",
+               18,"stackcompass-report.md",4),
+          ]
+          domain=b"agentplugins.package-tree\x00sha256\x00v1"
+          def digest_tree(directory):
+              items=[]
+              for path in directory.rglob("*"):
+                  relative=path.relative_to(directory).as_posix()
+                  assert not path.is_symlink() and not relative.startswith(".git/")
+                  if path.is_dir():
+                      items.append((relative.encode(),b"directory",b"040000",b"",b""))
+                  elif path.is_file():
+                      mode=b"100755" if path.stat().st_mode & 0o111 else b"100644"
+                      items.append((relative.encode(),b"file",mode,b"",path.read_bytes()))
+                  else:
+                      raise AssertionError("unsupported source entry")
+              sha=hashlib.sha256()
+              sha.update(len(domain).to_bytes(8,"big")); sha.update(domain)
+              for relative,kind,mode,target,body in sorted(items,key=lambda item:item[0]):
+                  for field in (b"entry",relative,kind,mode,target):
+                      sha.update(len(field).to_bytes(8,"big")); sha.update(field)
+                  sha.update(len(body).to_bytes(8,"big"))
+                  if kind==b"file":sha.update(body)
+              return "sha256:"+sha.hexdigest(),len(items)
+
+          def scan(cli,source):
+              with tempfile.TemporaryDirectory(prefix="report-output-source-proof-") as home:
+                  proc=subprocess.run([str(cli.resolve()),"scan",str(source.resolve()),
+                      "--no-llm","--format","json","--fail-on-incomplete"],
+                      env={**os.environ,"HOME":home,"OPENAI_API_KEY":"",
+                           "ANTHROPIC_API_KEY":"","GOOGLE_API_KEY":""},
+                      capture_output=True,text=True,timeout=180,check=False)
+              assert proc.returncode in (0,1), (proc.returncode,proc.stderr[-400:])
+              result=json.loads(proc.stdout)
+              assert result["metadata"]["skillspector_version"]=="2.13.4"
+              assert result["metadata"]["llm_requested"] is False
+              assert result["metadata"]["inference_usage"]==[]
+              assert result["execution_successful"] is True
+              assert result["suppressed_count"]==0 and result["suppressed"]==[]
+              return result,proc.returncode
+
+          def key(value):
+              return json.dumps(value,sort_keys=True,ensure_ascii=False,separators=(",",":"))
+          def issues(report):
+              rows=[]
+              for issue in report["issues"]:
+                  if issue.get("id") in {"AE1","AE7"} and issue.get("tags")==["coverage"]:
+                      continue
+                  item=dict(issue)
+                  if re.fullmatch(r"finding-[0-9a-f]{32}",str(item.get("finding_id",""))):
+                      item.pop("finding_id",None)
+                  rows.append(key(item))
+              return collections.Counter(rows)
+
+          results=[]
+          for relative,blob,original_tree,line,filename,count in cases:
+              source=Path("source")/relative
+              assert source.is_dir() and not source.is_symlink()
+              original=next(x for x in shard["records"] if x["source"]["path"]==relative)
+              assert original["source"]["revision"]=="345dfaa595470e12e9fe4e123ada3f6a51fdf455"
+              assert original["source"]["content_digest"]==original_tree
+              assert original["status"]=="partial" and original["freshness"]=="current"
+              assert original["coverage"]["grouping_complete"] is True
+              assert original["findings_truncated"] is False
+              assert [x["code"] for x in original["coverage"]["reasons"]]==["reference_missing"]
+              missing=[x for x in original["coverage"]["references"] if x["status"]=="missing"]
+              assert len(missing)==1 and missing[0]["line"]==line
+              assert missing[0]["reference_kind"]=="quoted_or_code"
+              assert filename in missing[0]["evidence"]
+              body=(source/"SKILL.md").read_bytes()
+              assert hashlib.sha1(b"blob "+str(len(body)).encode()+b"\0"+body).hexdigest()==blob
+              tree,n=digest_tree(source)
+              assert tree==original_tree and n==count
+              old,a=scan(Path("old/.venv/bin/skillspector"),source)
+              assert digest_tree(source)[0]==tree
+              new,b=scan(Path("new/.venv/bin/skillspector"),source)
+              assert digest_tree(source)[0]==tree
+              aa=old["analysis_completeness"]["references"]
+              bb=new["analysis_completeness"]["references"]
+              want=[x for x in aa if x.get("source_path")=="SKILL.md"
+                  and x.get("line")==line and x.get("reference_kind")=="quoted_or_code"
+                  and x.get("status")=="missing" and filename in x.get("evidence","")]
+              assert len(want)==1
+              assert collections.Counter(map(key,aa))-collections.Counter(map(key,bb))==collections.Counter(map(key,want))
+              assert not (collections.Counter(map(key,bb))-collections.Counter(map(key,aa)))
+              assert issues(old)==issues(new),"independent security issue changed"
+              for finding in original["findings"]:
+                  if isinstance(finding.get("match_fingerprint"),str):
+                      identity=(finding["rule"],finding["severity"],finding["path"],
+                          finding["line"],finding["match_fingerprint"])
+                      assert any((q.get("id"),q.get("severity"),
+                          q.get("location",{}).get("file"),
+                          q.get("location",{}).get("start_line"),q.get("match_fingerprint"))==identity
+                          for q in new["issues"]),"original signed risk fingerprint lost"
+              status=new["analysis_completeness"]
+              results.append({"path":relative,"source_digest":tree,"old_status":old["analysis_completeness"]["status"],
+                  "new_status":status["status"],"old_exit":a,"new_exit":b,
+                  "removed_generated_output_rows":1,"noncoverage_findings_preserved":True,
+                  "signed_findings_preserved":True,"source_bytes_unchanged":True,
+                  "candidate_complete":status["status"]=="complete" and status["is_complete"] is True})
+          receipt={"schema_version":1,"kind":"skillspector-2134-generated-report-output-three-source",
+              "original_report_commit":"7771404dcdfc5b3855f1319b5e9a2bc19d0c7acf",
+              "source_commit":"345dfaa595470e12e9fe4e123ada3f6a51fdf455",
+              "candidate_commit":subprocess.check_output(["git","-C","new","rev-parse","HEAD"],text=True).strip(),
+              "source_count":len(results),"results":results,
+              "production_modified":False,"production_partial_reduction":0,
+              "safe_for_automatic_publication":False}
+          output=Path(os.environ["RUNNER_TEMP"])/"generated-report-output-proof"
+          output.mkdir(parents=True,exist_ok=True)
+          (output/"proof.json").write_text(json.dumps(receipt,sort_keys=True,indent=2)+"\n")
+          print(json.dumps(receipt,sort_keys=True),flush=True)
+          PY
+      - name: Preserve bounded non-publishing proof
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: skillspector-generated-report-three-source-proof
+          path: ${{ runner.temp }}/generated-report-output-proof/
+          if-no-files-found: warn
+          retention-days: 7
