@@ -221,10 +221,15 @@ jobs:
               # also exits 1 for independent risk_score > RISK_THRESHOLD (50).
               # Never interpret a high-risk exit as missing coverage or waive
               # a genuine security finding to obtain a green CLI exit.
-              old_score, new_score = old.get("risk_score"), new.get("risk_score")
+              # --format json serializes the independent verdict under
+              # risk_assessment.score, not the internal node's risk_score key.
+              old_risk, new_risk = old.get("risk_assessment"), new.get("risk_assessment")
+              assert isinstance(old_risk, dict) and isinstance(new_risk, dict), (
+                  f"{name}: unavailable risk assessment in real CLI report")
+              old_score, new_score = old_risk.get("score"), new_risk.get("score")
               assert type(old_score) in (int, float) and 0 <= old_score <= 100
-              assert type(new_score) in (int, float) and new_score == old_score, (
-                  f"{name}: source-bound risk score changed")
+              assert type(new_score) in (int, float) and 0 <= new_score <= 100
+              assert new_risk == old_risk, f"{name}: independent security risk verdict changed"
               old_expected = int(not old_coverage["is_complete"] or old_score > 50)
               new_expected = int(not coverage["is_complete"] or new_score > 50)
               assert old_code == old_expected and new_code == new_expected, (
