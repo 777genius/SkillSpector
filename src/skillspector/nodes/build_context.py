@@ -141,6 +141,12 @@ _K_SKILL_REMOTE_PRIMARY_STANZA = re.compile(
 )
 
 
+# A mandatory sibling Skill outside this acquired root is not inspected.
+# Optional See Also links do not create a required-dependency ledger gap.
+_REQUIRED_SIBLING_DIRECTIVE = re.compile(r"\b(?:PREREQUISITE|MUST)\b", re.IGNORECASE)
+_REQUIRED_SIBLING_PATH = re.compile(r"\.\./[A-Za-z0-9][A-Za-z0-9_.-]{0,63}/SKILL\.md")
+
+
 def _is_allowed_inactive_git_hook_template(path: str, probe: bytes) -> bool:
     """Return whether *path* is a direct inactive Git hook template.
 
@@ -2934,6 +2940,40 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
                         path=primary_path,
                         start_line=remote_line,
                         end_line=remote_line,
+                        reason=LedgerReason.REFERENCED_UNINSPECTED,
+                    )
+                )
+
+        # The resolver retains out_of_scope links, but a required sibling
+        # SKILL.md outside this source-root acquisition must also be a
+        # referenced_uninspected ledger event. Never load or execute siblings.
+        if isinstance(primary_text, str):
+            primary_lines = primary_text.splitlines()
+            mandatory_sibling_lines: set[int] = set()
+            for reference in references:
+                line_num = reference.get("line")
+                if (
+                    reference.get("status") != "rejected"
+                    or reference.get("disposition") != ArtifactDisposition.OUT_OF_SCOPE
+                    or type(line_num) is not int
+                    or not (1 <= line_num <= len(primary_lines))
+                ):
+                    continue
+                source_line = primary_lines[line_num - 1]
+                if (
+                    _REQUIRED_SIBLING_DIRECTIVE.search(source_line)
+                    and _REQUIRED_SIBLING_PATH.search(source_line)
+                ):
+                    mandatory_sibling_lines.add(line_num)
+            for line_num in sorted(mandatory_sibling_lines):
+                reference_events.append(
+                    ledger_event(
+                        outcome=LedgerOutcome.PARTIAL,
+                        record_type=LedgerRecordType.SYSTEM,
+                        phase="reference_resolution",
+                        path=primary_path,
+                        start_line=line_num,
+                        end_line=line_num,
                         reason=LedgerReason.REFERENCED_UNINSPECTED,
                     )
                 )

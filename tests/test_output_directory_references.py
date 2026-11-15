@@ -3,10 +3,13 @@
 
 """Explicit output-directory CLI operands are not bundled input references."""
 
+import json
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
+from skillspector.cli import app
 from skillspector.references import resolve_bundle_references_with_metadata
 
 
@@ -120,3 +123,39 @@ def test_real_inventory_overrides_output_directory_metadata(tmp_path: Path) -> N
         row["status"] == "resolved" and row["target_path"] == "LICENSE.txt"
         for row in result.records
     )
+
+
+@pytest.mark.parametrize(
+    ("instruction", "required"),
+    [
+        ("> **PREREQUISITE:** Read `../shared/SKILL.md` for auth first.", True),
+        ("**CRITICAL — MUST 先完整读取 [`../shared/SKILL.md`](../shared/SKILL.md)**", True),
+        ("## See Also\n- [shared](../shared/SKILL.md)", False),
+    ],
+)
+def test_mandatory_unacquired_sibling_is_not_certified(
+    tmp_path: Path, instruction: str, required: bool
+) -> None:
+    source = (
+        "---\nname: sibling-scope\ndescription: Test bounded source coverage.\n"
+        "---\n# Skill\n" + instruction + "\n"
+        "```bash\nexample-cli --output-dir ./results\n```\n"
+    )
+    (tmp_path / "SKILL.md").write_text(source, encoding="utf-8")
+    scan = CliRunner().invoke(
+        app, ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+    )
+    assert scan.exit_code in (0, 1), scan.output
+    coverage = json.loads(scan.stdout)["analysis_completeness"]
+    assert coverage["status"] == ("partial" if required else "complete")
+    assert coverage["is_complete"] is (not required)
+    assert any(
+        ref["status"] == "rejected" and ref["disposition"] == "out_of_scope"
+        and "../shared/SKILL.md" in ref["evidence"]
+        for ref in coverage["references"]
+    )
+    assert not any(ref["status"] == "missing" for ref in coverage["references"])
+    reasons = [item["reason_code"] for item in coverage["ledger_exceptions"]]
+    assert ("referenced_uninspected" in reasons) is required
+    if required:
+        assert scan.exit_code == 1

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "src/skillspector/references.py"
+      - "src/skillspector/nodes/build_context.py"
       - "tests/test_output_directory_references.py"
       - "scripts/skillspector_2134_output_directory_e2e.py"
       - ".github/workflows/v2134-output-directory-immutable-e2e.yml"
