@@ -58,6 +58,11 @@ _FRONTMATTER_VERSION = re.compile(
 _JSON_VERSION_FIELD = re.compile(
     r'^[ \t]*"VERSION"[ \t]*:[ \t]*"(?P<version>[0-9]+\.[0-9]+\.[0-9]+)"[ \t]*,?[ \t]*$'
 )
+# A complete whole-line XML prolog is markup, not a bundled-file load.
+# Explicit version-shaped file links, prose and command operands stay visible.
+_XML_VERSION_DECLARATION = re.compile(
+    r'^[ \t]*<\?xml[ \t]+version="(?P<version>1\.[01])"[ \t]+encoding="UTF-8"[ \t]*\?>[ \t]*$'
+)
 _QUOTED_OR_CODE_PATH = re.compile(
     r"(?:`|'|\")((?:\./)?(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12})(?:`|'|\")"
 )
@@ -424,6 +429,7 @@ def _candidate_strings(
         stripped_line = line.rstrip("\r\n")
         version_match = _FRONTMATTER_VERSION.match(stripped_line) if quoted_scalars else None
         json_version_match = _JSON_VERSION_FIELD.fullmatch(stripped_line)
+        xml_version_match = _XML_VERSION_DECLARATION.fullmatch(stripped_line)
         source_offset += len(line)
         following_line_blank = source_offset == len(text) or bool(
             re.match(r"[ \t]{0,3}(?:\r?\n|\Z)", text[source_offset : source_offset + 5])
@@ -574,11 +580,17 @@ def _candidate_strings(
                 and json_version_match is not None
                 and (match.start, match.end) == json_version_match.span("version")
             )
+            is_xml_version_metadata = (
+                reference_kind is ReferenceKind.QUOTED_OR_CODE
+                and xml_version_match is not None
+                and (match.start, match.end) == xml_version_match.span("version")
+            )
             if (
                 not inside_destination
                 and not redundant_image_label
                 and not is_version_metadata
                 and not is_json_version_metadata
+                and not is_xml_version_metadata
             ):
                 key = (line_number, match.start, raw)
                 if key not in seen:
