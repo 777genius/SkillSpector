@@ -153,6 +153,42 @@ def issue_counter(report: dict) -> collections.Counter:
     )
 
 
+def ensure_signed_findings_preserved(
+    signed_findings: list[dict], scanned_issues: list[dict], source_id: str
+) -> None:
+    """Require every authenticated security group, including null fingerprints."""
+    expected: collections.Counter[tuple] = collections.Counter()
+    for finding in signed_findings:
+        if not isinstance(finding, dict):
+            raise ValueError("invalid signed finding object: " + source_id)
+        identity = (
+            finding.get("rule"), finding.get("severity"), finding.get("path"),
+            finding.get("line"), finding.get("match_fingerprint"),
+        )
+        if (
+            not all(isinstance(value, str) and value for value in identity[:3])
+            or type(identity[3]) is not int
+            or (identity[4] is not None and not isinstance(identity[4], str))
+        ):
+            raise ValueError("incomplete signed security finding identity: " + source_id)
+        expected[identity] += 1
+
+    observed: collections.Counter[tuple] = collections.Counter()
+    if not isinstance(scanned_issues, list):
+        raise ValueError("scanner security issues unavailable: " + source_id)
+    for issue in scanned_issues:
+        if not isinstance(issue, dict):
+            raise ValueError("malformed scanner issue: " + source_id)
+        location = issue.get("location")
+        if isinstance(location, dict):
+            observed[(
+                issue.get("id"), issue.get("severity"), location.get("file"),
+                location.get("start_line"), issue.get("match_fingerprint"),
+            )] += 1
+    if any(observed[identity] < count for identity, count in expected.items()):
+        raise ValueError("signed source-bound security finding lost: " + source_id)
+
+
 def scan(cli: Path, source: Path) -> tuple[dict, int]:
     with tempfile.TemporaryDirectory(prefix="output-dir-skillspector-home-") as home:
         env = {
@@ -307,20 +343,11 @@ def main() -> None:
                 raise ValueError("mandatory unacquired sibling reference was hidden: " + case["id"])
 
         original = originals[case["id"]]
-        issues = new["issues"]
-        for finding in original.get("findings", []):
-            fingerprint = finding.get("match_fingerprint")
-            if not isinstance(fingerprint, str):
-                continue
-            identity = (finding["rule"], finding["severity"], finding["path"], finding["line"], fingerprint)
-            if not any(
-                (item.get("id"), item.get("severity"),
-                 item.get("location", {}).get("file"),
-                 item.get("location", {}).get("start_line"),
-                 item.get("match_fingerprint")) == identity
-                for item in issues
-            ):
-                raise ValueError("signed source-bound security finding lost: " + case["id"])
+        # All signed groups count, including LP3 findings without a matching
+        # fingerprint. Never silently skip a security warning with null identity.
+        ensure_signed_findings_preserved(
+            original.get("findings", []), new["issues"], case["id"]
+        )
 
         old_coverage = old["analysis_completeness"]
         coverage = new["analysis_completeness"]

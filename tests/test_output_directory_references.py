@@ -4,6 +4,7 @@
 """Explicit output-directory CLI operands are not bundled input references."""
 
 import json
+import runpy
 from pathlib import Path
 
 import pytest
@@ -159,3 +160,28 @@ def test_mandatory_unacquired_sibling_is_not_certified(
     assert ("referenced_uninspected" in reasons) is required
     if required:
         assert scan.exit_code == 1
+
+
+
+def test_original_null_fingerprint_finding_is_not_skipped() -> None:
+    """LP3 warnings in original signed v3 can legitimately have null fingerprints."""
+    e2e = runpy.run_path(
+        str(Path(__file__).resolve().parents[1] / "scripts" / "skillspector_2134_output_directory_e2e.py")
+    )
+    preserve = e2e["ensure_signed_findings_preserved"]
+    signed = {
+        "rule": "LP3", "severity": "MEDIUM", "path": "SKILL.md",
+        "line": 1, "match_fingerprint": None,
+    }
+    scanned = {
+        "id": "LP3", "severity": "MEDIUM",
+        "location": {"file": "SKILL.md", "start_line": 1},
+        "match_fingerprint": None,
+    }
+    preserve([signed], [scanned], "pinned-source")
+    with pytest.raises(ValueError, match="signed source-bound security finding lost"):
+        preserve([signed], [], "pinned-source")
+    with pytest.raises(ValueError, match="signed source-bound security finding lost"):
+        preserve([signed, signed], [scanned], "pinned-source")
+    with pytest.raises(ValueError, match="signed source-bound security finding lost"):
+        preserve([signed], [{**scanned, "location": {"file": "SKILL.md", "start_line": 2}}], "pinned-source")
