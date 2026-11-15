@@ -217,7 +217,19 @@ jobs:
                   json.dumps(diagnostic, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
               )
               print("CANARY_STATUS " + json.dumps(diagnostic, sort_keys=True), flush=True)
-              assert old_code == 1 and new_code == 0, f"{name}: expected Partial -> Complete CLI result"
+              # --fail-on-incomplete is not the only exit-1 condition: the CLI
+              # also exits 1 for independent risk_score > RISK_THRESHOLD (50).
+              # Never interpret a high-risk exit as missing coverage or waive
+              # a genuine security finding to obtain a green CLI exit.
+              old_score, new_score = old.get("risk_score"), new.get("risk_score")
+              assert type(old_score) in (int, float) and 0 <= old_score <= 100
+              assert type(new_score) in (int, float) and new_score == old_score, (
+                  f"{name}: source-bound risk score changed")
+              old_expected = int(not old_coverage["is_complete"] or old_score > 50)
+              new_expected = int(not coverage["is_complete"] or new_score > 50)
+              assert old_code == old_expected and new_code == new_expected, (
+                  f"{name}: CLI exit inconsistent with coverage/risk status; "
+                  f"old={old_code}, new={new_code}, risk_score={new_score}")
               assert coverage["status"] == "complete" and coverage["is_complete"] is True, (
                   f"{name}: scanner did not produce a genuinely Complete result")
               assert coverage["partially_inspected_files"] == 0
