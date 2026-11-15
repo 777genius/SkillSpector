@@ -1,0 +1,277 @@
+name: SkillSpector 2.13.4 named YAML version source-bound E2E
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/v2134-named-version-e2e.yml"
+      - "src/skillspector/references.py"
+      - "tests/test_named_version_references.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: 777genius/SkillSpector
+          ref: c4816448b85fceaaf4291cb552e2de38562d1348
+          persist-credentials: false
+          path: old
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          path: new
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: vyas-devgna/braids
+          ref: 79c913e9d27854d88c7ee58aa9906bd2b45001b4
+          sparse-checkout: |
+            skills/braids
+            skills/braids-audit
+            skills/braids-claims
+            skills/braids-depth
+            skills/braids-help
+            skills/braids-review
+            skills/braids-risk
+          persist-credentials: false
+          path: source
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Exact refs, locked dependencies, Ruff and adversarial tests
+        run: |
+          set -euo pipefail
+          test "$(git -C old rev-parse HEAD)" = c4816448b85fceaaf4291cb552e2de38562d1348
+          test "$(git -C new rev-parse HEAD)" = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test "$(git -C source rev-parse HEAD)" = 79c913e9d27854d88c7ee58aa9906bd2b45001b4
+          test "$(git -C source hash-object skills/braids-risk/SKILL.md)" = 60e9db28256ccaddc7ee0e55d89be92cc82f4a3a
+          python3 -m pip install --disable-pip-version-check uv==0.13.4
+          uv sync --directory old --frozen --no-dev --python 3.12
+          uv sync --directory new --frozen --extra dev --python 3.12
+          new/.venv/bin/ruff check new/src/skillspector/references.py new/tests/test_named_version_references.py
+          new/.venv/bin/ruff format --check new/src/skillspector/references.py new/tests/test_named_version_references.py
+          new/.venv/bin/python -m pytest -q new/tests/test_named_version_references.py new/tests/test_json_version_reference_scope.py
+      - name: Immutable seven-source old/new no-LLM proof
+        timeout-minutes: 25
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import collections, hashlib, json, os, re, subprocess, tempfile
+          from pathlib import Path
+
+          CASES = (
+              ("braids", "skills/braids", "04859d21b336c0508837352ac1339acd89004c44",
+               "sha256:5b7847f3aba1c0f029ea80336b8b01e002beb2139b66c52da284b59c2a41b266", 17,
+               (("E2", "HIGH", "scripts/inspect_capabilities.py", 226, "585dfe66dcf8dd59e27929295d3eb32cf81458b5bd468cd9bf20325fec8ad8d4"),
+                ("MP3", "HIGH", "SKILL.md", 104, "6b8072b03bc313721f36d2d84551fb73cecf818ccf275bba28d57729fc578ce8"),
+                ("LP3", "MEDIUM", "SKILL.md", 1, None),
+                ("MP1", "MEDIUM", "references/host-capabilities.md", 20, "d586212c746836fa8f4c76aef8d699511c00be1f0f20ae928c28c44e3d5add0e"))),
+              ("braids-audit", "skills/braids-audit", "66c04f76296a4ad00961b425a3492d23f40f2ece",
+               "sha256:d2db929de7343e0895b1947423fd7ca88aa5df5cfc0367610d307cc7718f0095", 1, ()),
+              ("braids-claims", "skills/braids-claims", "3ece813e1dde6ba4905b52feef81f277ed54ba11",
+               "sha256:fe75b295ae450f23c13231e100cdffb55ee041ac7dce02653b82b2d5d6f3056b", 1, ()),
+              ("braids-depth", "skills/braids-depth", "68aa8305a093abb8b5f395f317640c8363f58b97",
+               "sha256:3cf65e2db5128e410442e7b9a14a3eab66873da65bc0d360e8bdd8a20040e6c8", 1,
+               (("AR2", "HIGH", "SKILL.md", 26, "98dff37c9e4b31342d76a93060f25985e29ef3a5bca9c80454acb15ba3370db8"),
+                ("MP3", "HIGH", "SKILL.md", 18, "6b8072b03bc313721f36d2d84551fb73cecf818ccf275bba28d57729fc578ce8"))),
+              ("braids-help", "skills/braids-help", "1c6f8f6fec87aa238e977b984a6194e904b1db43",
+               "sha256:76a82578d66b7c9d330e06cbfbf9c14c7056ecf184f8625e72310cc4ed587c9d", 1,
+               (("MP3", "HIGH", "SKILL.md", 31, "6b8072b03bc313721f36d2d84551fb73cecf818ccf275bba28d57729fc578ce8"),)),
+              ("braids-review", "skills/braids-review", "3af0f1cb587eecac650b8a035fcb7ee59c34fd7a",
+               "sha256:cb296cfaa85006ed2490f850c6b5366f17511b5672ca6458edaebc778ed6d663", 1, ()),
+              ("braids-risk", "skills/braids-risk", "60e9db28256ccaddc7ee0e55d89be92cc82f4a3a",
+               "sha256:3e60d493740de19f0bfe4b6e35acc2a9a6a4c2ee873c0c35c08a7211c266d389", 1,
+               (("MP3", "HIGH", "SKILL.md", 3, "6b8072b03bc313721f36d2d84551fb73cecf818ccf275bba28d57729fc578ce8"),
+                ("MP3", "HIGH", "SKILL.md", 23, "94697d0341cf25278484f2281fb8275b0b4917c431434dea41bd25e2dff27580"))),
+          )
+
+          REVISION = "79c913e9d27854d88c7ee58aa9906bd2b45001b4"
+          DOMAIN = b"agentplugins.package-tree\x00sha256\x00v1"
+
+          def tree_digest(root):
+              rows = []
+              for path in root.rglob("*"):
+                  relative = path.relative_to(root).as_posix()
+                  assert not path.is_symlink(), f"symlink in immutable source: {relative}"
+                  if path.is_dir():
+                      rows.append((relative.encode(), b"directory", b"040000", b"", b""))
+                  elif path.is_file():
+                      mode = b"100755" if path.stat().st_mode & 0o111 else b"100644"
+                      rows.append((relative.encode(), b"file", mode, b"", path.read_bytes()))
+                  else:
+                      raise AssertionError(f"unsupported source entry: {relative}")
+              digest = hashlib.sha256()
+              digest.update(len(DOMAIN).to_bytes(8, "big"))
+              digest.update(DOMAIN)
+              for relative, kind, mode, target, content in sorted(rows, key=lambda row: row[0]):
+                  for field in (b"entry", relative, kind, mode, target):
+                      digest.update(len(field).to_bytes(8, "big"))
+                      digest.update(field)
+                  digest.update(len(content).to_bytes(8, "big"))
+                  if kind == b"file":
+                      digest.update(content)
+              return "sha256:" + digest.hexdigest(), len(rows)
+
+          def scan(cli, source):
+              with tempfile.TemporaryDirectory(prefix="named-version-proof-") as home:
+                  process = subprocess.run(
+                      [str(cli.resolve()), "scan", str(source.resolve()),
+                       "--no-llm", "--format", "json", "--fail-on-incomplete"],
+                      env={**os.environ, "HOME": home, "OPENAI_API_KEY": ""},
+                      capture_output=True, text=True, timeout=180, check=False)
+              assert process.returncode in (0, 1), (process.returncode, process.stderr[-600:])
+              report = json.loads(process.stdout)
+              assert report["metadata"]["skillspector_version"] == "2.13.4"
+              assert report["metadata"]["llm_requested"] is False
+              assert report["metadata"]["inference_usage"] == []
+              assert report["execution_successful"] is True
+              assert report["suppressed_count"] == 0 and report["suppressed"] == []
+              return report, process.returncode
+
+          def key(value):
+              return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+          def independent_issues(report):
+              result = []
+              for issue in report["issues"]:
+                  if issue.get("id") in {"AE1", "AE7"} and issue.get("tags") == ["coverage"]:
+                      continue
+                  item = dict(issue)
+                  finding_id = item.get("finding_id")
+                  if isinstance(finding_id, str) and re.fullmatch(r"finding-[0-9a-f]{32}", finding_id):
+                      item.pop("finding_id")
+                  result.append(key(item))
+              return collections.Counter(result)
+
+          results = []
+          for name, relative, expected_blob, expected_tree, expected_entries, signed_risks in CASES:
+              source = Path("source") / relative
+              assert source.is_dir() and not source.is_symlink(), f"{name}: source root missing or redirected"
+              entries = list(source.rglob("*"))
+              assert len(entries) == expected_entries, f"{name}: source inventory count changed"
+              assert all(not path.is_symlink() for path in entries), f"{name}: symlink in source"
+              body = (source / "SKILL.md").read_bytes()
+              blob = hashlib.sha1(b"blob " + str(len(body)).encode() + b"\0" + body).hexdigest()
+              assert blob == expected_blob, f"{name}: immutable SKILL.md blob changed"
+              digest, count = tree_digest(source)
+              assert digest == expected_tree and count == expected_entries, f"{name}: signed full-tree digest changed"
+
+              before = digest
+              old, old_code = scan(Path("old/.venv/bin/skillspector"), source)
+              assert tree_digest(source)[0] == before, f"{name}: old scanner modified source"
+              new, new_code = scan(Path("new/.venv/bin/skillspector"), source)
+              assert tree_digest(source)[0] == before, f"{name}: candidate scanner modified source"
+
+              old_refs = old["analysis_completeness"]["references"]
+              new_refs = new["analysis_completeness"]["references"]
+              missing = [item for item in old_refs
+                  if item.get("source_path") == "SKILL.md"
+                  and item.get("line") == 5
+                  and item.get("reference_kind") == "quoted_or_code"
+                  and item.get("status") == "missing"
+                  and 'methodology-version: "3.1.0"' in item.get("evidence", "")]
+              assert len(missing) == 1, f"{name}: expected one exact named-version metadata false positive"
+              assert (collections.Counter(map(key, old_refs)) -
+                      collections.Counter(map(key, new_refs))) == collections.Counter(map(key, missing)), (
+                          f"{name}: unexpected reference evidence removed")
+              assert not (collections.Counter(map(key, new_refs)) -
+                          collections.Counter(map(key, old_refs))), f"{name}: candidate added reference rows"
+              assert independent_issues(old) == independent_issues(new), (
+                  f"{name}: independent security finding changed")
+
+              observed = {
+                  (issue.get("id"), issue.get("severity"),
+                   issue.get("location", {}).get("file"),
+                   issue.get("location", {}).get("start_line"),
+                   issue.get("match_fingerprint"))
+                  for issue in new["issues"]
+              }
+              assert set(signed_risks) <= observed, f"{name}: original signed risk fingerprint lost"
+              coverage = new["analysis_completeness"]
+              old_coverage = old["analysis_completeness"]
+              diagnostic = {
+                  "source": name, "old_status": old_coverage["status"],
+                  "new_status": coverage["status"],
+                  "old_exit": old_code, "new_exit": new_code,
+                  "old_is_complete": old_coverage["is_complete"],
+                  "new_is_complete": coverage["is_complete"],
+                  "old_reference_count": len(old_refs),
+                  "new_reference_count": len(new_refs),
+                  "new_partially_inspected_files": coverage.get("partially_inspected_files"),
+                  "new_entirely_uninspected_files": coverage.get("entirely_uninspected_files"),
+                  "new_limitation_codes": sorted({
+                      item.get("reason_code", "")
+                      for item in coverage.get("ledger_exceptions", [])
+                  }),
+              }
+              output = Path(os.environ["RUNNER_TEMP"]) / "named-version-source-proof"
+              output.mkdir(parents=True, exist_ok=True)
+              (output / f"{name}-diagnostic.json").write_text(
+                  json.dumps(diagnostic, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+              )
+              print("CANARY_STATUS " + json.dumps(diagnostic, sort_keys=True), flush=True)
+              # --fail-on-incomplete is not the only exit-1 condition: the CLI
+              # also exits 1 for independent risk_score > RISK_THRESHOLD (50).
+              # Never interpret a high-risk exit as missing coverage or waive
+              # a genuine security finding to obtain a green CLI exit.
+              # --format json serializes the independent verdict under
+              # risk_assessment.score, not the internal node's risk_score key.
+              old_risk, new_risk = old.get("risk_assessment"), new.get("risk_assessment")
+              assert isinstance(old_risk, dict) and isinstance(new_risk, dict), (
+                  f"{name}: unavailable risk assessment in real CLI report")
+              old_score, new_score = old_risk.get("score"), new_risk.get("score")
+              assert type(old_score) in (int, float) and 0 <= old_score <= 100
+              assert type(new_score) in (int, float) and 0 <= new_score <= 100
+              assert new_risk == old_risk, f"{name}: independent security risk verdict changed"
+              old_expected = int(not old_coverage["is_complete"] or old_score > 50)
+              new_expected = int(not coverage["is_complete"] or new_score > 50)
+              assert old_code == old_expected and new_code == new_expected, (
+                  f"{name}: CLI exit inconsistent with coverage/risk status; "
+                  f"old={old_code}, new={new_code}, risk_score={new_score}")
+              assert coverage["status"] == "complete" and coverage["is_complete"] is True, (
+                  f"{name}: scanner did not produce a genuinely Complete result")
+              assert coverage["partially_inspected_files"] == 0
+              assert coverage["entirely_uninspected_files"] == 0
+              assert all(item["status"] == "resolved" for item in new_refs)
+
+              results.append({
+                  "name": name, "source_revision": REVISION, "source_blob": blob,
+                  "source_tree_sha256": digest, "source_entries": count,
+                  "removed_missing_reference_rows": len(missing),
+                  "old_status": old["analysis_completeness"]["status"],
+                  "new_status": coverage["status"], "old_exit": old_code,
+                  "new_exit": new_code, "security_findings_preserved": True,
+                  "signed_risk_fingerprints_preserved": len(signed_risks),
+                  "source_bytes_unchanged": True, "production_partial_reduction": 0,
+              })
+
+          result = {
+              "schema_version": 1, "kind": "named-version-v2134-seven-source-readonly",
+              "source_revision": REVISION,
+              "original_scanner": "c4816448b85fceaaf4291cb552e2de38562d1348",
+              "candidate_scanner": subprocess.check_output(
+                  ["git", "-C", "new", "rev-parse", "HEAD"], text=True).strip(),
+              "source_count": len(results), "results": results,
+              "production_partial_reduction": 0, "production_modified": False,
+              "safe_for_automatic_publication": False,
+          }
+          output = Path(os.environ["RUNNER_TEMP"]) / "named-version-source-proof"
+          output.mkdir(parents=True, exist_ok=True)
+          (output / "proof.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
+          print(json.dumps(result, sort_keys=True))
+          PY
+      - name: Preserve bounded proof, no publication
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: skillspector-2134-named-version-source-proof
+          path: ${{ runner.temp }}/named-version-source-proof/
+          if-no-files-found: warn
+          retention-days: 7
