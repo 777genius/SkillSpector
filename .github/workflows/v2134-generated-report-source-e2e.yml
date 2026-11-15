@@ -198,6 +198,18 @@ jobs:
                           q.get("location",{}).get("start_line"),q.get("match_fingerprint"))==identity
                           for q in new["issues"]),"original signed risk fingerprint lost"
               status=new["analysis_completeness"]
+              # The entire original signed source has exactly one missing
+              # output reference and no other incomplete reason. A removed
+              # row alone is NOT proof of a genuinely Complete candidate.
+              assert (status.get("status")=="complete"
+                  and status.get("is_complete") is True
+                  and status.get("partially_inspected_files")==0
+                  and status.get("entirely_uninspected_files")==0
+                  and status.get("ledger_exceptions")==[]
+                  and status.get("limitations")==[]), (
+                  "candidate source remains incomplete after output qualification",
+                  relative,status.get("status"),
+                  [x.get("reason_code") for x in status.get("ledger_exceptions",[])])
               results.append({"path":relative,"source_digest":tree,"old_status":old["analysis_completeness"]["status"],
                   "new_status":status["status"],"old_exit":a,"new_exit":b,
                   "removed_generated_output_rows":1,"noncoverage_findings_preserved":True,
