@@ -167,8 +167,9 @@ def ensure_signed_findings_preserved(
         )
         if (
             not all(isinstance(value, str) and value for value in identity[:3])
-            or type(identity[3]) is not int
-            or (identity[4] is not None and not isinstance(identity[4], str))
+            or not isinstance(identity[3], int)
+            or isinstance(identity[3], bool)
+            or (identity[4] is not None and (not isinstance(identity[4], str) or not identity[4]))
         ):
             raise ValueError("incomplete signed security finding identity: " + source_id)
         expected[identity] += 1
