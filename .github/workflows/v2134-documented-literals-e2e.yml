@@ -1,0 +1,209 @@
+name: v2.13.4 documented literals immutable E2E
+
+on:
+  pull_request:
+    paths:
+      - "src/skillspector/references.py"
+      - "tests/test_documented_address_version_2134.py"
+      - ".github/workflows/v2134-documented-literals-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: 777genius/SkillSpector
+          ref: c4816448b85fceaaf4291cb552e2de38562d1348
+          persist-credentials: false
+          path: scanner-old
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: 777genius/SkillSpector
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          path: scanner-new
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: alpic-ai/skybridge
+          ref: 9afa5fa52522923022de30f27a4b785df68104c3
+          sparse-checkout: skills/chatgpt-app-builder
+          persist-credentials: false
+          path: real-skybridge
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: nexlayer/nexlayer-plugin
+          ref: f13b3c1747136047e0623bbd1fa8d60052ba9c18
+          sparse-checkout: skills/ship-it-nexlayer
+          persist-credentials: false
+          path: real-nexlayer
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Verify exact source and scanner SHA, install lockfiles
+        run: |
+          set -euo pipefail
+          test "$(git -C scanner-old rev-parse HEAD)" = c4816448b85fceaaf4291cb552e2de38562d1348
+          test "$(git -C scanner-new rev-parse HEAD)" = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test "$(git -C real-skybridge rev-parse HEAD)" = 9afa5fa52522923022de30f27a4b785df68104c3
+          test "$(git -C real-nexlayer rev-parse HEAD)" = f13b3c1747136047e0623bbd1fa8d60052ba9c18
+          test -s real-skybridge/skills/chatgpt-app-builder/SKILL.md
+          test -s real-nexlayer/skills/ship-it-nexlayer/SKILL.md
+          python3 -m pip install --disable-pip-version-check uv==0.13.4
+          uv sync --directory scanner-old --frozen --no-dev --python 3.12
+          uv sync --directory scanner-new --frozen --extra dev --python 3.12
+      - name: Deterministic and negative tests
+        run: |
+          scanner-new/.venv/bin/python -m pytest -q scanner-new/tests/test_documented_address_version_2134.py scanner-new/tests/test_json_version_reference_scope.py
+          scanner-new/.venv/bin/ruff check scanner-new/src/skillspector/references.py scanner-new/tests/test_documented_address_version_2134.py
+          scanner-new/.venv/bin/ruff format --check scanner-new/src/skillspector/references.py scanner-new/tests/test_documented_address_version_2134.py
+      - name: Real no-LLM pinned source comparison with security evidence
+        timeout-minutes: 8
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, re, subprocess, tempfile
+          from pathlib import Path
+
+          cases = (
+              ("skybridge", Path("real-skybridge/skills/chatgpt-app-builder"), ("1.x", "2.x", "0.36.x")),
+              ("nexlayer", Path("real-nexlayer/skills/ship-it-nexlayer"), ("0.0.0.0", "127.0.0.1")),
+          )
+          old_cli = Path("scanner-old/.venv/bin/skillspector").resolve()
+          new_cli = Path("scanner-new/.venv/bin/skillspector").resolve()
+          def tree_hash(root):
+              h = hashlib.sha256()
+              for file in sorted(root.rglob("*")):
+                  if file.is_symlink():
+                      raise AssertionError(f"unexpected source symlink: {file}")
+                  if file.is_file():
+                      h.update(file.relative_to(root).as_posix().encode())
+                      h.update(b"\0")
+                      h.update(hashlib.sha256(file.read_bytes()).digest())
+              return h.hexdigest()
+          def scan(executable, root):
+              with tempfile.TemporaryDirectory(prefix="skillspector-no-llm-") as home:
+                  proc = subprocess.run(
+                      [str(executable), "scan", str(root.resolve()), "--no-llm",
+                       "--format", "json", "--fail-on-incomplete"],
+                      env={**os.environ, "HOME": home, "OPENAI_API_KEY": ""},
+                      capture_output=True, text=True, check=False, timeout=180,
+                  )
+              assert proc.returncode in (0, 1), (proc.returncode, proc.stderr[-500:])
+              report = json.loads(proc.stdout)
+              assert report["execution_successful"] is True
+              return report, proc.returncode
+          def missing(report):
+              return {
+                  (r["source_path"], r["line"], r["column"], r["reference_kind"], r["evidence"])
+                  for r in report["analysis_completeness"]["references"] if r["status"] == "missing"
+              }
+          def other_refs(report):
+              return sorted(
+                  json.dumps(r, ensure_ascii=False, sort_keys=True)
+                  for r in report["analysis_completeness"]["references"] if r["status"] != "missing"
+              )
+          def security(report):
+              # Per-scan generated correlation UUIDs are not security findings.
+              # Preserve severity, evidence, nested IDs and all other fields.
+              canonical = []
+              seen_generated_ids = set()
+              for issue in report.get("issues", []):
+                  if set(issue.get("tags") or ()) == {"coverage"}:
+                      continue
+                  row = dict(issue)
+                  fid = row.get("finding_id")
+                  if isinstance(fid, str) and re.fullmatch(r"finding-[0-9a-f]{32}", fid):
+                      assert fid not in seen_generated_ids, "duplicate generated issue ID"
+                      seen_generated_ids.add(fid)
+                      row.pop("finding_id")
+                  canonical.append(json.dumps(row, ensure_ascii=False, sort_keys=True))
+              return sorted(canonical)
+          # Regression controls: only the exact top-level generated ID is ignored.
+          control = {"id": "RP1", "severity": "HIGH",
+                     "finding_id": "finding-" + "a" * 32,
+                     "evidence": {"finding_id": "finding-" + "c" * 32}}
+          changed_id = {**control, "finding_id": "finding-" + "b" * 32}
+          assert security({"issues": [control]}) == security({"issues": [changed_id]})
+          assert security({"issues": [control]}) != security({"issues": [{**changed_id, "severity": "LOW"}]})
+          assert security({"issues": [control]}) != security({"issues": [{**changed_id, "evidence": {"finding_id": "finding-" + "d" * 32}}]})
+          assert security({"issues": [control]}) != security({"issues": []})
+          assert security({"issues": [control]}) != security({"issues": [{**control, "finding_id": "manual-id"}]})
+          def independent_ledger(report):
+              # A new reference classification may change reference_missing;
+              # all other independently observed limitations must survive.
+              return sorted(
+                  json.dumps(x, ensure_ascii=False, sort_keys=True)
+                  for x in report["analysis_completeness"].get("ledger_exceptions", [])
+                  if x.get("reason_code") != "reference_missing"
+              )
+          proof = []
+          for name, root, tokens in cases:
+              before_hash = tree_hash(root)
+              old, old_exit = scan(old_cli, root)
+              new, new_exit = scan(new_cli, root)
+              assert tree_hash(root) == before_hash, name
+              old_missing, new_missing = missing(old), missing(new)
+              removed = old_missing - new_missing
+              assert removed, (name, "no strictly documented false references removed")
+              assert not (new_missing - old_missing), (name, "new missing references")
+              assert all(any(f"`{token}`" in row[-1] for token in tokens) for row in removed), (
+                  name, "non-target missing reference removed", removed
+              )
+              assert other_refs(old) == other_refs(new), (name, "other reference evidence changed")
+              assert independent_ledger(old) == independent_ledger(new), (name, "independent limitations changed")
+              assert security(old) == security(new), (name, "independent security issue changed")
+              assert old["analysis_completeness"]["is_complete"] is False
+              assert new["analysis_completeness"]["is_complete"] is False
+              assert old_exit == new_exit == 1
+              proof.append({
+                  "name": name, "immutable_tree_sha256": before_hash,
+                  "skill_md_sha256": hashlib.sha256((root/"SKILL.md").read_bytes()).hexdigest(),
+                  "old_missing": len(old_missing), "new_missing": len(new_missing),
+                  "removed_documented_literals": len(removed),
+                  "noncoverage_findings_preserved": len(security(new)),
+                  "security_sha256": hashlib.sha256(
+                      json.dumps(security(new), sort_keys=True).encode()
+                  ).hexdigest(),
+                  "independent_ledger_count": len(independent_ledger(new)),
+                  "old_status": old["analysis_completeness"]["status"],
+                  "new_status": new["analysis_completeness"]["status"],
+                  "candidate_complete": False,
+              })
+          with tempfile.TemporaryDirectory(prefix="skillspector-negative-") as d:
+              root = Path(d)
+              (root/"SKILL.md").write_text(
+                  "---\nname: negative-literal\ndescription: Missing executable must remain incomplete.\n---\n"
+                  "Migrating from version `1.x`. Bind to `0.0.0.0`.\n"
+                  "Run `python3 scripts/required.sh` before continuing.\n", encoding="utf-8"
+              )
+              report, exitcode = scan(new_cli, root)
+              assert exitcode == 1 and report["analysis_completeness"]["is_complete"] is False
+              assert any(ref["status"] == "missing" and "scripts/required.sh" in ref["evidence"]
+                         for ref in report["analysis_completeness"]["references"])
+          out = Path(os.environ["RUNNER_TEMP"]) / "skillspector-v2134-literal-proof"
+          out.mkdir(parents=True, exist_ok=True)
+          (out/"comparison.json").write_text(json.dumps({
+              "kind": "skillspector-v2134-immutable-nonfile-literal-proof-v1",
+              "baseline_sha": "c4816448b85fceaaf4291cb552e2de38562d1348",
+              "candidate_sha": subprocess.check_output(
+                  ["git", "-C", "scanner-new", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "production_modified": False,
+              "production_partial_error_reduction": 0,
+              "results": proof,
+          }, sort_keys=True, indent=2)+"\n", encoding="utf-8")
+          PY
+      - name: Publish read-only proof artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: skillspector-v2134-documented-literals
+          path: ${{ runner.temp }}/skillspector-v2134-literal-proof/
+          if-no-files-found: warn
+          retention-days: 7
