@@ -189,14 +189,34 @@ jobs:
               assert collections.Counter(map(key,aa))-collections.Counter(map(key,bb))==collections.Counter(map(key,want))
               assert not (collections.Counter(map(key,bb))-collections.Counter(map(key,aa)))
               assert issues(old)==issues(new),"independent security issue changed"
+              # Full signed multiset, including LP3 findings with null fingerprints.
+              # A count-only comparison or filtering to non-null fingerprints
+              # could silently drop independent source-bound security evidence.
+              signed=collections.Counter()
               for finding in original["findings"]:
-                  if isinstance(finding.get("match_fingerprint"),str):
-                      identity=(finding["rule"],finding["severity"],finding["path"],
-                          finding["line"],finding["match_fingerprint"])
-                      assert any((q.get("id"),q.get("severity"),
-                          q.get("location",{}).get("file"),
-                          q.get("location",{}).get("start_line"),q.get("match_fingerprint"))==identity
-                          for q in new["issues"]),"original signed risk fingerprint lost"
+                  assert isinstance(finding,dict),"invalid signed finding"
+                  identity=(finding.get("rule"),finding.get("severity"),
+                      finding.get("path"),finding.get("line"),
+                      finding.get("match_fingerprint"))
+                  assert all(isinstance(v,str) and v for v in identity[:3]), (
+                      "invalid signed finding identity",relative,identity)
+                  assert isinstance(identity[3],int) and identity[3]>0, (
+                      "invalid signed finding line",relative,identity)
+                  assert identity[4] is None or (isinstance(identity[4],str) and identity[4]), (
+                      "invalid signed finding fingerprint",relative,identity)
+                  signed[identity]+=1
+              observed=collections.Counter()
+              for issue in new["issues"]:
+                  assert isinstance(issue,dict),"invalid candidate issue"
+                  loc=issue.get("location")
+                  if not isinstance(loc,dict):
+                      continue
+                  observed[(issue.get("id"),issue.get("severity"),
+                      loc.get("file"),loc.get("start_line"),
+                      issue.get("match_fingerprint"))]+=1
+              assert all(observed[k]>=n for k,n in signed.items()), (
+                  "original signed security finding group lost",relative,
+                  [(k,n,observed[k]) for k,n in signed.items() if observed[k]<n])
               status=new["analysis_completeness"]
               # The entire original signed source has exactly one missing
               # output reference and no other incomplete reason. A removed
