@@ -217,6 +217,31 @@ _PLAIN_RELATIVE_PATH = re.compile(
     r"(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}))(?![\w/.-])"
 )
 
+# A value immediately following an explicit output-directory option is a
+# runtime destination, not an input file bundled with the Skill. Keep this
+# grammar limited to the two documented directory flags and a separate value.
+_OUTPUT_DIRECTORY_ARGUMENT_PREFIX = re.compile(
+    r"(?<![\w-])--(?:output-dir|out-dir)[ \t]+(?P<quote>[\"']?)\Z"
+)
+
+
+def _is_output_directory_argument(line: str, start: int, end: int) -> bool:
+    """Suppress only a separate CLI destination with balanced operand quoting."""
+    match = _OUTPUT_DIRECTORY_ARGUMENT_PREFIX.search(line[:start])
+    if match is None:
+        return False
+    remaining = line[end:]
+    quote = match.group("quote")
+    if quote:
+        if not remaining.startswith(quote):
+            return False
+        remaining = remaining[1:]
+    elif remaining.startswith(("'", '"')):
+        return False
+    # splitlines(keepends=True) retains terminal LF/CRLF; those are not operands.
+    return remaining in {"", "\n", "\r", "\r\n"} or remaining[0] in " \t;&|"
+
+
 # Explicit generated Markdown report outputs are not bundled source inputs.
 # Grammar is intentionally limited to visible prose/steps; real inventory
 # matches and independent executable references remain strict in the resolver.
@@ -685,6 +710,13 @@ def _candidate_strings(
             )
             if pattern_index == 0:
                 markdown_destination_span = (match.start, match.end)
+            # A direct output-dir operand is a runtime destination only when
+            # missing from the inspected source. Resolved inventory, ambiguity,
+            # symlinks and independent executable inputs retain their evidence.
+            is_output_directory_argument = (
+                reference_kind is ReferenceKind.PLAIN_PATH
+                and _is_output_directory_argument(line, match.start, match.end)
+            )
             # Only the quoted scalar of a frontmatter version field is metadata.
             # Numeric filenames elsewhere (including explicit Markdown links)
             # must retain normal missing/resolved reference accounting.
@@ -744,7 +776,8 @@ def _candidate_strings(
                                 reference_kind is ReferenceKind.QUOTED_OR_CODE
                                 and license_metadata is not None
                                 and (match.start, match.end) == license_metadata.span("license")
-                            ),
+                            )
+                            or is_output_directory_argument,
                         )
                     )
                     if len(candidates) >= MAX_RAW_REFERENCE_CANDIDATES:
