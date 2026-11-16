@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from skillspector.artifacts import ReferenceKind
 from skillspector.cli import app
+from skillspector.nodes.build_context import _is_uninspected_runtime_image_operand
 from skillspector.references import (
     _is_output_directory_argument,
     resolve_bundle_references_with_metadata,
@@ -249,3 +251,65 @@ def test_risk_recommendation_cannot_be_weakened_by_e2e_exception() -> None:
     assert escalation({**safe, "extra": "missing"}, caution) is False
     assert escalation(safe, {**safe, "recommendation": "UNKNOWN"}) is False
     assert escalation(None, caution) is False
+
+@pytest.mark.parametrize(
+    ("command", "operand", "required"),
+    [
+        (
+            "python3 scripts/resize_sticker.py path/to/source.png --out-dir path/to/output-dir",
+            "path/to/source.png",
+            True,
+        ),
+        ("python scripts/process.py ./generated.jpg --output-dir ./out", "./generated.jpg", True),
+        ("python3 scripts/process.py path/to/source.png --input-dir ./out", "path/to/source.png", False),
+        ("echo path/to/source.png --out-dir ./out", "path/to/source.png", False),
+        ("python3 scripts/process.py --out-dir ./out path/to/source.png", "path/to/source.png", False),
+        ("python3 scripts/process.py path/to/source.png --out-dir ./out; echo done", "path/to/source.png", False),
+        ("python3 scripts/process.py path/to/source.png --out-dir ./out", "./out", False),
+    ],
+)
+def test_explicit_runtime_image_is_not_certified_by_output_flag(
+    command: str, operand: str, required: bool
+) -> None:
+    reference = {
+        "line": 1,
+        "column": command.index(operand) + 1,
+        "status": "missing",
+        "reference_kind": ReferenceKind.PLAIN_PATH,
+    }
+    assert _is_uninspected_runtime_image_operand(reference, command) is required
+    assert not _is_uninspected_runtime_image_operand(
+        {**reference, "status": "resolved"}, command
+    )
+    assert not _is_uninspected_runtime_image_operand(
+        {**reference, "reference_kind": ReferenceKind.QUOTED_OR_CODE}, command
+    )
+
+
+def test_unacquired_runtime_image_stays_partial_in_real_no_llm_cli(tmp_path: Path) -> None:
+    script = tmp_path / "scripts" / "resize_sticker.py"
+    script.parent.mkdir()
+    script.write_text("print('static test')\n", encoding="utf-8")
+    fence = chr(96) * 3
+    (tmp_path / "SKILL.md").write_text(
+        "---\nname: missing-runtime-image\ndescription: Generate a sticker.\n---\n"
+        f"{fence}bash\n"
+        "python3 scripts/resize_sticker.py path/to/source.png --out-dir path/to/output-dir\n"
+        f"{fence}\n",
+        encoding="utf-8",
+    )
+    scan = CliRunner().invoke(
+        app, ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+    )
+    assert scan.exit_code == 1, scan.output
+    completeness = json.loads(scan.stdout)["analysis_completeness"]
+    assert completeness["status"] == "partial"
+    assert completeness["is_complete"] is False
+    assert "referenced_uninspected" in {
+        row["reason_code"] for row in completeness["ledger_exceptions"]
+    }
+    assert any(
+        row["status"] == "missing" and "source.png" in row["evidence"]
+        for row in completeness["references"]
+    )
+

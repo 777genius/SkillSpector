@@ -147,6 +147,41 @@ _REQUIRED_SIBLING_DIRECTIVE = re.compile(r"\b(?:PREREQUISITE|MUST)\b", re.IGNORE
 _REQUIRED_SIBLING_PATH = re.compile(r"\.\./[A-Za-z0-9][A-Za-z0-9_.-]{0,63}/SKILL\.md")
 
 
+# A missing image used as a positional Python script argument is a dynamic
+# runtime input. Inspecting the script does not inspect that input image.
+# This intentionally narrow grammar never treats output flags as input.
+_RUNTIME_IMAGE_INPUT_COMMAND = re.compile(
+    r"^[ \t]*(?:python3|python)[ \t]+"
+    r"(?:\./)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.py[ \t]+"
+    r"(?P<input>(?:\./)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.(?:png|jpe?g|webp))"
+    r"[ \t]+--(?:out-dir|output-dir)[ \t]+"
+    r"(?:\./)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*[ \t]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_uninspected_runtime_image_operand(reference: dict, primary_text: str | None) -> bool:
+    """Match only a precise unacquired input operand in a literal command."""
+    if (
+        not isinstance(primary_text, str)
+        or reference.get("status") != "missing"
+        or reference.get("reference_kind") != ReferenceKind.PLAIN_PATH
+    ):
+        return False
+    line_num, column = reference.get("line"), reference.get("column")
+    lines = primary_text.splitlines()
+    if (
+        type(line_num) is not int
+        or type(column) is not int
+        or line_num < 1
+        or line_num > len(lines)
+    ):
+        return False
+    line = lines[line_num - 1]
+    match = _RUNTIME_IMAGE_INPUT_COMMAND.fullmatch(line) if len(line) <= 512 else None
+    return match is not None and match.start("input") + 1 == column
+
+
 def _is_allowed_inactive_git_hook_template(path: str, probe: bytes) -> bool:
     """Return whether *path* is a direct inactive Git hook template.
 
@@ -2991,7 +3026,10 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
                     # other static analyzer has finished.
                     LedgerReason.REFERENCED_UNINSPECTED
                     if reference["status"] == "missing"
-                    and reference.get("reference_kind") == ReferenceKind.INLINE_COMMAND
+                    and (
+                        reference.get("reference_kind") == ReferenceKind.INLINE_COMMAND
+                        or _is_uninspected_runtime_image_operand(reference, primary_text)
+                    )
                     else LedgerReason.REFERENCE_MISSING
                     if reference["status"] == "missing"
                     else LedgerReason.REFERENCED_UNINSPECTED
