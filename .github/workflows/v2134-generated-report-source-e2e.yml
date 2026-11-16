@@ -69,6 +69,25 @@ jobs:
           new/.venv/bin/ruff format --diff new/src/skillspector/references.py new/tests/test_generated_report_output_references.py || true
           new/.venv/bin/ruff format --check new/src/skillspector/references.py new/tests/test_generated_report_output_references.py
           new/.venv/bin/python -m pytest -q new/tests/test_generated_report_output_references.py
+      # The pinned upstream .gitattributes sets *.ps1 eol=crlf. actions/checkout
+      # converts the committed LF blobs to CRLF in the temporary worktree.
+      # Read-only qualification must scan the original Git source bytes that
+      # were used for the signed source digest, not the checkout translation.
+      - name: Restore exact upstream PowerShell Git blob bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=345dfaa595470e12e9fe4e123ada3f6a51fdf455
+          test "$(git -C source rev-parse HEAD)" = "$source_sha"
+          restore_blob() {
+            local relative="$1" expected="$2" actual
+            actual="$(git -C source rev-parse "$source_sha:$relative")"
+            test "$actual" = "$expected"
+            git -C source cat-file blob "$expected" > "source/$relative"
+            test "$(git hash-object --no-filters "source/$relative")" = "$expected"
+          }
+          restore_blob plugins/agents-security/skills/authz-coverage-gap-detector/scripts/authz-gaps.ps1 b6fd48bf4e228dc1cbfc8bbe6bab6610efe49d0e
+          restore_blob plugins/agents-runtime/skills/cache-effectiveness-auditor/scripts/cache-harvest.ps1 8e8991c12a8ea6a8fe82e0b0c78bcfb487218464
       - name: Three immutable original report outputs with exact security parity
         timeout-minutes: 22
         run: |
@@ -175,7 +194,7 @@ jobs:
               body=(source/"SKILL.md").read_bytes()
               assert hashlib.sha1(b"blob "+str(len(body)).encode()+b"\0"+body).hexdigest()==blob
               tree,n=digest_tree(source)
-              assert tree==original_tree and n==count
+              assert tree==original_tree and n==count, (relative,tree,original_tree,n,count)
               old,a=scan(Path("old/.venv/bin/skillspector"),source)
               assert digest_tree(source)[0]==tree
               new,b=scan(Path("new/.venv/bin/skillspector"),source)
