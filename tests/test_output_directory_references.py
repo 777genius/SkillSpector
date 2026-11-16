@@ -307,9 +307,7 @@ def test_explicit_runtime_image_is_not_certified_by_output_flag(
     )
 
 
-def test_unacquired_runtime_image_stays_partial_in_real_no_llm_cli(
-    tmp_path: Path,
-) -> None:
+def test_unacquired_runtime_image_stays_partial_in_real_no_llm_cli(tmp_path: Path) -> None:
     script = tmp_path / "scripts" / "resize_sticker.py"
     script.parent.mkdir()
     script.write_text("print('static test')\n", encoding="utf-8")

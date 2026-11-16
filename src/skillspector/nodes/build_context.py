@@ -160,9 +160,7 @@ _RUNTIME_IMAGE_INPUT_COMMAND = re.compile(
 )
 
 
-def _is_uninspected_runtime_image_operand(
-    reference: dict, primary_lines: list[str]
-) -> bool:
+def _is_uninspected_runtime_image_operand(reference: dict, primary_lines: list[str]) -> bool:
     """Match only a precise unacquired input operand in a literal command."""
     if (
         reference.get("status") != "missing"
