@@ -76,7 +76,7 @@ CASES = (
         "source_path": "skills/milvus-meme-sticker", "checkout": "source-sticker",
         "blob": "fb7e3fdc800fcba84fc74d5befe65b5ea6f07dbd",
         "tree": "sha256:75fc0e21349e6792f72fef783fd38a190a9c6c469b159f7bc92045b71d5d716b",
-        "entries": 6, "line": 55, "column": 35,
+        "entries": 5, "line": 55, "column": 35,
         "evidence": "python3 scripts/resize_sticker.py path/to/source.png --out-dir path/to/output-dir",
         "negative_input": True,  # The reported missing path is source.png, NOT the output directory.
         "signed_risks": (
