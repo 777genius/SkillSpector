@@ -357,6 +357,18 @@ def main() -> None:
                 "original_risk_sha256": fingerprint(original_risk),
                 "candidate_risk_sha256": fingerprint(candidate_risk),
                 "changed_risk_fields": changed_fields,
+                # Failure-only generated text; retain fail-closed mismatch rejection.
+                # Limit rendered evidence; preserve full hashes and original lengths.
+                "recommendation_delta": {
+                    "original": original_fields["recommendation"][:2048]
+                    if isinstance(original_fields.get("recommendation"), str) else None,
+                    "candidate": candidate_fields["recommendation"][:2048]
+                    if isinstance(candidate_fields.get("recommendation"), str) else None,
+                    "original_length": len(original_fields["recommendation"])
+                    if isinstance(original_fields.get("recommendation"), str) else None,
+                    "candidate_length": len(candidate_fields["recommendation"])
+                    if isinstance(candidate_fields.get("recommendation"), str) else None,
+                },
                 "old_risk_field_fingerprints": {
                     k: fingerprint(v) for k, v in sorted(original_fields.items())
                 },
