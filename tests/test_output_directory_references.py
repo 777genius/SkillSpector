@@ -252,6 +252,7 @@ def test_risk_recommendation_cannot_be_weakened_by_e2e_exception() -> None:
     assert escalation(safe, {**safe, "recommendation": "UNKNOWN"}) is False
     assert escalation(None, caution) is False
 
+
 @pytest.mark.parametrize(
     ("command", "operand", "required"),
     [
@@ -260,12 +261,32 @@ def test_risk_recommendation_cannot_be_weakened_by_e2e_exception() -> None:
             "path/to/source.png",
             True,
         ),
-        ("python scripts/process.py ./generated.jpg --output-dir ./out", "./generated.jpg", True),
-        ("python3 scripts/process.py path/to/source.png --input-dir ./out", "path/to/source.png", False),
+        (
+            "python scripts/process.py ./generated.jpg --output-dir ./out",
+            "./generated.jpg",
+            True,
+        ),
+        (
+            "python3 scripts/process.py path/to/source.png --input-dir ./out",
+            "path/to/source.png",
+            False,
+        ),
         ("echo path/to/source.png --out-dir ./out", "path/to/source.png", False),
-        ("python3 scripts/process.py --out-dir ./out path/to/source.png", "path/to/source.png", False),
-        ("python3 scripts/process.py path/to/source.png --out-dir ./out; echo done", "path/to/source.png", False),
-        ("python3 scripts/process.py path/to/source.png --out-dir ./out", "./out", False),
+        (
+            "python3 scripts/process.py --out-dir ./out path/to/source.png",
+            "path/to/source.png",
+            False,
+        ),
+        (
+            "python3 scripts/process.py path/to/source.png --out-dir ./out; echo done",
+            "path/to/source.png",
+            False,
+        ),
+        (
+            "python3 scripts/process.py path/to/source.png --out-dir ./out",
+            "./out",
+            False,
+        ),
     ],
 )
 def test_explicit_runtime_image_is_not_certified_by_output_flag(
@@ -286,7 +307,9 @@ def test_explicit_runtime_image_is_not_certified_by_output_flag(
     )
 
 
-def test_unacquired_runtime_image_stays_partial_in_real_no_llm_cli(tmp_path: Path) -> None:
+def test_unacquired_runtime_image_stays_partial_in_real_no_llm_cli(
+    tmp_path: Path,
+) -> None:
     script = tmp_path / "scripts" / "resize_sticker.py"
     script.parent.mkdir()
     script.write_text("print('static test')\n", encoding="utf-8")
@@ -299,7 +322,8 @@ def test_unacquired_runtime_image_stays_partial_in_real_no_llm_cli(tmp_path: Pat
         encoding="utf-8",
     )
     scan = CliRunner().invoke(
-        app, ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+        app,
+        ["scan", str(tmp_path), "--no-llm", "--format", "json", "--fail-on-incomplete"],
     )
     assert scan.exit_code == 1, scan.output
     completeness = json.loads(scan.stdout)["analysis_completeness"]
