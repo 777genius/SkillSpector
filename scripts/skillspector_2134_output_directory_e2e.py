@@ -333,6 +333,45 @@ def main() -> None:
         if issue_counter(old) != issue_counter(new):
             raise ValueError("security issue changed: " + case["id"])
         if old.get("risk_assessment") != new.get("risk_assessment"):
+            # Preserve the ORIGINAL failed proof instead of silently discarding it.
+            # Diagnostic evidence is not a successful security comparison and
+            # can never authorize a Complete/production promotion.
+            original_risk = old.get("risk_assessment")
+            candidate_risk = new.get("risk_assessment")
+            def fingerprint(value):
+                return hashlib.sha256(key(value).encode("utf-8")).hexdigest()
+            original_fields = original_risk if isinstance(original_risk, dict) else {}
+            candidate_fields = candidate_risk if isinstance(candidate_risk, dict) else {}
+            changed_fields = sorted(
+                k for k in set(original_fields) | set(candidate_fields)
+                if original_fields.get(k) != candidate_fields.get(k)
+            )
+            diagnostic = {
+                "schema_version": 1,
+                "kind": "skillspector-2134-output-directory-failed-risk-comparison",
+                "source_id": case["id"],
+                "source_revision": case["revision"],
+                "source_tree_sha256": digest,
+                "old_scanner": OLD_SCANNER,
+                "candidate_scanner": candidate_head,
+                "original_risk_sha256": fingerprint(original_risk),
+                "candidate_risk_sha256": fingerprint(candidate_risk),
+                "changed_risk_fields": changed_fields,
+                "old_risk_field_fingerprints": {
+                    k: fingerprint(v) for k, v in sorted(original_fields.items())
+                },
+                "new_risk_field_fingerprints": {
+                    k: fingerprint(v) for k, v in sorted(candidate_fields.items())
+                },
+                "comparison_passed": False,
+                "security_proof_complete": False,
+                "safe_for_automatic_publication": False,
+                "production_partial_reduction": 0,
+            }
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(
+                json.dumps(diagnostic, sort_keys=True, indent=2) + "\\n", encoding="utf-8"
+            )
             raise ValueError("independent security risk assessment changed: " + case["id"])
         for required in external_prerequisites:
             if not any(
