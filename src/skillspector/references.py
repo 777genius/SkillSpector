@@ -216,16 +216,25 @@ _PLAIN_RELATIVE_PATH = re.compile(
 # A value immediately following an explicit output-directory option is a
 # runtime destination, not an input file bundled with the Skill. Keep this
 # grammar limited to the two documented directory flags and a separate value.
-_OUTPUT_DIRECTORY_ARGUMENT_PREFIX = re.compile(r"(?<![\w-])--(?:output-dir|out-dir)[ \t]+[\"']?\Z")
-_OUTPUT_DIRECTORY_ARGUMENT_SUFFIX = re.compile(r"[\"']?(?=[ \t]|$|[;&|])")
+_OUTPUT_DIRECTORY_ARGUMENT_PREFIX = re.compile(
+    r"(?<![\w-])--(?:output-dir|out-dir)[ \t]+(?P<quote>[\"']?)\Z"
+)
 
 
 def _is_output_directory_argument(line: str, start: int, end: int) -> bool:
-    """Return whether a plain relative-path candidate is a CLI output target."""
-    return (
-        _OUTPUT_DIRECTORY_ARGUMENT_PREFIX.search(line[:start]) is not None
-        and _OUTPUT_DIRECTORY_ARGUMENT_SUFFIX.match(line[end:]) is not None
-    )
+    """Suppress only a separate CLI destination with balanced operand quoting."""
+    match = _OUTPUT_DIRECTORY_ARGUMENT_PREFIX.search(line[:start])
+    if match is None:
+        return False
+    remaining = line[end:]
+    quote = match.group("quote")
+    if quote:
+        if not remaining.startswith(quote):
+            return False
+        remaining = remaining[1:]
+    elif remaining.startswith(("'", '"')):
+        return False
+    return not remaining or remaining[0] in " \t;&|"
 
 
 def _evidence(cleaned_line: str, column: int) -> str:

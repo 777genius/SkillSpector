@@ -11,7 +11,10 @@ import pytest
 from typer.testing import CliRunner
 
 from skillspector.cli import app
-from skillspector.references import resolve_bundle_references_with_metadata
+from skillspector.references import (
+    _is_output_directory_argument,
+    resolve_bundle_references_with_metadata,
+)
 
 
 def resolve(tmp_path: Path, command: str):
@@ -77,6 +80,26 @@ def test_non_directory_or_non_separate_operands_remain_references(
         item["line"] == 6 and item["column"] == expected_column and item["status"] == "missing"
         for item in result.records
     )
+
+
+@pytest.mark.parametrize(
+    ("command", "is_output"),
+    [
+        ('program --output-dir "./missing"', True),
+        ("program --out-dir './missing'", True),
+        ("program --output-dir ./missing", True),
+        ("program --output-dir ./missing; echo done", True),
+        ('program --output-dir "./missing' + "'", False),
+        ("program --out-dir './missing" + '"', False),
+        ("program --out-dir ./missing'", False),
+        ('program --output-dir "./missing nextarg', False),
+    ],
+)
+def test_output_directory_malformed_quote_never_suppresses_input(
+    command: str, is_output: bool
+) -> None:
+    start = command.index("./missing")
+    assert _is_output_directory_argument(command, start, start + len("./missing")) is is_output
 
 
 def test_output_directory_does_not_hide_other_input_or_script_paths(tmp_path: Path) -> None:
