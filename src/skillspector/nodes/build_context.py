@@ -141,6 +141,45 @@ _K_SKILL_REMOTE_PRIMARY_STANZA = re.compile(
 )
 
 
+# A mandatory sibling Skill outside this acquired root is not inspected.
+# Optional See Also links do not create a required-dependency ledger gap.
+_REQUIRED_SIBLING_DIRECTIVE = re.compile(r"\b(?:PREREQUISITE|MUST)\b", re.IGNORECASE)
+_REQUIRED_SIBLING_PATH = re.compile(r"\.\./[A-Za-z0-9][A-Za-z0-9_.-]{0,63}/SKILL\.md")
+
+
+# A missing image used as a positional Python script argument is a dynamic
+# runtime input. Inspecting the script does not inspect that input image.
+# This intentionally narrow grammar never treats output flags as input.
+_RUNTIME_IMAGE_INPUT_COMMAND = re.compile(
+    r"^[ \t]*(?:python3|python)[ \t]+"
+    r"(?:\./)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.py[ \t]+"
+    r"(?P<input>(?:\./)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.(?:png|jpe?g|webp))"
+    r"[ \t]+--(?:out-dir|output-dir)[ \t]+"
+    r"(?:\./)?[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*[ \t]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_uninspected_runtime_image_operand(reference: dict, primary_lines: list[str]) -> bool:
+    """Match only a precise unacquired input operand in a literal command."""
+    if (
+        reference.get("status") != "missing"
+        or reference.get("reference_kind") != ReferenceKind.PLAIN_PATH
+    ):
+        return False
+    line_num, column = reference.get("line"), reference.get("column")
+    if (
+        type(line_num) is not int
+        or type(column) is not int
+        or line_num < 1
+        or line_num > len(primary_lines)
+    ):
+        return False
+    line = primary_lines[line_num - 1]
+    match = _RUNTIME_IMAGE_INPUT_COMMAND.fullmatch(line) if len(line) <= 512 else None
+    return match is not None and match.start("input") + 1 == column
+
+
 def _is_allowed_inactive_git_hook_template(path: str, probe: bytes) -> bool:
     """Return whether *path* is a direct inactive Git hook template.
 
@@ -2937,6 +2976,39 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
                         reason=LedgerReason.REFERENCED_UNINSPECTED,
                     )
                 )
+
+        # The resolver retains out_of_scope links, but a required sibling
+        # SKILL.md outside this source-root acquisition must also be a
+        # referenced_uninspected ledger event. Never load or execute siblings.
+        primary_lines = primary_text.splitlines() if isinstance(primary_text, str) else []
+        if isinstance(primary_text, str):
+            mandatory_sibling_lines: set[int] = set()
+            for reference in references:
+                line_num = reference.get("line")
+                if (
+                    reference.get("status") != "rejected"
+                    or reference.get("disposition") != ArtifactDisposition.OUT_OF_SCOPE
+                    or type(line_num) is not int
+                    or not (1 <= line_num <= len(primary_lines))
+                ):
+                    continue
+                source_line = primary_lines[line_num - 1]
+                required_directive = _REQUIRED_SIBLING_DIRECTIVE.search(source_line)
+                required_path = _REQUIRED_SIBLING_PATH.search(source_line)
+                if required_directive and required_path:
+                    mandatory_sibling_lines.add(line_num)
+            for line_num in sorted(mandatory_sibling_lines):
+                reference_events.append(
+                    ledger_event(
+                        outcome=LedgerOutcome.PARTIAL,
+                        record_type=LedgerRecordType.SYSTEM,
+                        phase="reference_resolution",
+                        path=primary_path,
+                        start_line=line_num,
+                        end_line=line_num,
+                        reason=LedgerReason.REFERENCED_UNINSPECTED,
+                    )
+                )
         reference_events.extend(
             ledger_event(
                 outcome=LedgerOutcome.PARTIAL,
@@ -2952,7 +3024,10 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
                     # other static analyzer has finished.
                     LedgerReason.REFERENCED_UNINSPECTED
                     if reference["status"] == "missing"
-                    and reference.get("reference_kind") == ReferenceKind.INLINE_COMMAND
+                    and (
+                        reference.get("reference_kind") == ReferenceKind.INLINE_COMMAND
+                        or _is_uninspected_runtime_image_operand(reference, primary_lines)
+                    )
                     else LedgerReason.REFERENCE_MISSING
                     if reference["status"] == "missing"
                     else LedgerReason.REFERENCED_UNINSPECTED

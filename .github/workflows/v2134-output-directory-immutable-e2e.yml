@@ -1,0 +1,146 @@
+name: SkillSpector 2.13.4 output directory immutable E2E
+
+on:
+  pull_request:
+    paths:
+      - "src/skillspector/references.py"
+      - "src/skillspector/nodes/build_context.py"
+      - "tests/test_output_directory_references.py"
+      - "scripts/skillspector_2134_output_directory_e2e.py"
+      - ".github/workflows/v2134-output-directory-immutable-e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 777genius/SkillSpector
+          ref: c4816448b85fceaaf4291cb552e2de38562d1348
+          persist-credentials: false
+          path: old
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 777genius/SkillSpector
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          path: new
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 777genius/universal-agent-plugins-registry
+          ref: 7771404dcdfc5b3855f1319b5e9a2bc19d0c7acf
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            reports/skillspector/v3/index.json
+            reports/skillspector/v3/shards/7a6c76d6fc8c04884625f152befbff9e71c149a170fa99b39cb789145799ee12.json
+            reports/skillspector/v3/shards/02717a3ec3057c4d0f4030e138a887c2292c1d400cf82f3590c8c900eb2ea970.json
+            reports/skillspector/v3/shards/15191ac9383e4d09541ae1a2e48b0c334265746c6864b30d14af70a90fac66b8.json
+            reports/skillspector/v3/shards/8ccdccd419bd2bddcc11cd66187677f0f782fa2958da3d44a79a7255b1012dd6.json
+            reports/skillspector/v3/shards/adc5550ba8df656d7fbe25fb933616aabc284f05c41c490b4c284be96100f268.json
+          persist-credentials: false
+          path: original-v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: googleworkspace/cli
+          ref: cd3697e07eb520056dcf142d0c7439bbb9ba32e9
+          sparse-checkout: skills/gws-gmail-watch
+          persist-credentials: false
+          path: source-google
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: larksuite/cli
+          ref: 3d82c85419ad7560ad017db7a3972a596b5fbeb1
+          sparse-checkout: skills/lark-workflow-meeting-summary
+          persist-credentials: false
+          path: source-lark
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: libtv-labs/libtv-skills
+          ref: c609246c1eca69f6bc129bcbb5d64c36734e4a4a
+          sparse-checkout: skills/libtv-skill
+          persist-credentials: false
+          path: source-libtv
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: rorkai/app-store-connect-cli-skills
+          ref: 266d7ad357acd3a1c437668b0e77021bb0ff2f02
+          sparse-checkout: skills/asc-cli-usage
+          persist-credentials: false
+          path: source-asc
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: zc277584121/marketing-skills
+          ref: 959680e17acfa4474639c7a9abf77340399ebfb6
+          sparse-checkout: skills/milvus-meme-sticker
+          persist-credentials: false
+          path: source-sticker
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Exact identity and locked environments
+        run: |
+          set -euo pipefail
+          test "$(git -C old rev-parse HEAD)" = c4816448b85fceaaf4291cb552e2de38562d1348
+          test "$(git -C new rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git -C original-v3 rev-parse HEAD)" = 7771404dcdfc5b3855f1319b5e9a2bc19d0c7acf
+          python3 -m pip install --disable-pip-version-check uv==0.13.4
+          uv sync --directory old --frozen --no-dev --python 3.12
+          uv sync --directory new --frozen --extra dev --python 3.12
+      - name: Static Ruff, syntax and fail-closed negative controls
+        run: |
+          new/.venv/bin/ruff check new/src/skillspector/references.py new/tests/test_output_directory_references.py new/scripts/skillspector_2134_output_directory_e2e.py
+          new/.venv/bin/ruff format --diff new/src/skillspector/references.py new/tests/test_output_directory_references.py || true
+          new/.venv/bin/ruff format --check new/src/skillspector/references.py new/tests/test_output_directory_references.py
+          python3 -m py_compile new/scripts/skillspector_2134_output_directory_e2e.py
+          new/.venv/bin/python -m pytest -q new/tests/test_output_directory_references.py
+      # A checked-out source worktree can differ from the immutable Git blobs.
+      # Restore only this exact pinned root, never trust an unverified path or
+      # bypass the full signed source-tree digest checked by the E2E.
+      - name: Restore pinned sticker source bytes from immutable Git blobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          pinned_commit=959680e17acfa4474639c7a9abf77340399ebfb6
+          root=skills/milvus-meme-sticker
+          test "$(git -C source-sticker rev-parse HEAD)" = "$pinned_commit"
+          test "$(git -C source-sticker ls-tree -r --name-only "$pinned_commit" -- "$root" | wc -l)" -eq 3
+          restore() {
+            local path="$1" expected="$2"
+            test "$(git -C source-sticker rev-parse "$pinned_commit:$path")" = "$expected"
+            git -C source-sticker cat-file blob "$expected" > "source-sticker/$path"
+            test "$(git hash-object --no-filters "source-sticker/$path")" = "$expected"
+          }
+          restore "$root/SKILL.md" fb7e3fdc800fcba84fc74d5befe65b5ea6f07dbd
+          restore "$root/references/style-guide.md" d36f83750e5ed41d2569f4f5561c6c4bc53a4fe6
+          restore "$root/scripts/resize_sticker.py" fd1cd8f9d031d31a36a0ba38726828ff5db66a2b
+          test -x "source-sticker/$root/scripts/resize_sticker.py"
+          test "$(find "source-sticker/$root" -type f | wc -l)" -eq 3
+          test "$(find "source-sticker/$root" -type d | wc -l)" -eq 3
+          test -z "$(find "source-sticker/$root" -type l -print -quit)"
+      - name: Verify scoped candidates and retain unacquired sibling and input limitations
+        timeout-minutes: 32
+        run: |
+          mkdir -p "$RUNNER_TEMP/skillspector-output-directory-proof"
+          python3 new/scripts/skillspector_2134_output_directory_e2e.py \
+            --baseline "$GITHUB_WORKSPACE/old" \
+            --candidate "$GITHUB_WORKSPACE/new" \
+            --published "$GITHUB_WORKSPACE/original-v3" \
+            --source-google "$GITHUB_WORKSPACE/source-google" \
+            --source-lark "$GITHUB_WORKSPACE/source-lark" \
+            --source-libtv "$GITHUB_WORKSPACE/source-libtv" \
+            --source-asc "$GITHUB_WORKSPACE/source-asc" \
+            --source-sticker "$GITHUB_WORKSPACE/source-sticker" \
+            --output "$RUNNER_TEMP/skillspector-output-directory-proof/proof.json"
+      - name: Preserve read-only immutable proof
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: skillspector-output-directory-five-source-proof
+          path: ${{ runner.temp }}/skillspector-output-directory-proof/
+          if-no-files-found: warn
+          retention-days: 7
