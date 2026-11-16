@@ -298,12 +298,12 @@ def test_explicit_runtime_image_is_not_certified_by_output_flag(
         "status": "missing",
         "reference_kind": ReferenceKind.PLAIN_PATH,
     }
-    assert _is_uninspected_runtime_image_operand(reference, command) is required
+    assert _is_uninspected_runtime_image_operand(reference, [command]) is required
     assert not _is_uninspected_runtime_image_operand(
-        {**reference, "status": "resolved"}, command
+        {**reference, "status": "resolved"}, [command]
     )
     assert not _is_uninspected_runtime_image_operand(
-        {**reference, "reference_kind": ReferenceKind.QUOTED_OR_CODE}, command
+        {**reference, "reference_kind": ReferenceKind.QUOTED_OR_CODE}, [command]
     )
 
 

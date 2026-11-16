@@ -161,25 +161,23 @@ _RUNTIME_IMAGE_INPUT_COMMAND = re.compile(
 
 
 def _is_uninspected_runtime_image_operand(
-    reference: dict, primary_text: str | None
+    reference: dict, primary_lines: list[str]
 ) -> bool:
     """Match only a precise unacquired input operand in a literal command."""
     if (
-        not isinstance(primary_text, str)
-        or reference.get("status") != "missing"
+        reference.get("status") != "missing"
         or reference.get("reference_kind") != ReferenceKind.PLAIN_PATH
     ):
         return False
     line_num, column = reference.get("line"), reference.get("column")
-    lines = primary_text.splitlines()
     if (
         type(line_num) is not int
         or type(column) is not int
         or line_num < 1
-        or line_num > len(lines)
+        or line_num > len(primary_lines)
     ):
         return False
-    line = lines[line_num - 1]
+    line = primary_lines[line_num - 1]
     match = _RUNTIME_IMAGE_INPUT_COMMAND.fullmatch(line) if len(line) <= 512 else None
     return match is not None and match.start("input") + 1 == column
 
@@ -2984,8 +2982,8 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
         # The resolver retains out_of_scope links, but a required sibling
         # SKILL.md outside this source-root acquisition must also be a
         # referenced_uninspected ledger event. Never load or execute siblings.
+        primary_lines = primary_text.splitlines() if isinstance(primary_text, str) else []
         if isinstance(primary_text, str):
-            primary_lines = primary_text.splitlines()
             mandatory_sibling_lines: set[int] = set()
             for reference in references:
                 line_num = reference.get("line")
@@ -3030,7 +3028,7 @@ def build_context(state: SkillspectorState) -> dict[str, object]:
                     if reference["status"] == "missing"
                     and (
                         reference.get("reference_kind") == ReferenceKind.INLINE_COMMAND
-                        or _is_uninspected_runtime_image_operand(reference, primary_text)
+                        or _is_uninspected_runtime_image_operand(reference, primary_lines)
                     )
                     else LedgerReason.REFERENCE_MISSING
                     if reference["status"] == "missing"
