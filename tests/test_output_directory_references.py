@@ -299,9 +299,7 @@ def test_explicit_runtime_image_is_not_certified_by_output_flag(
         "reference_kind": ReferenceKind.PLAIN_PATH,
     }
     assert _is_uninspected_runtime_image_operand(reference, [command]) is required
-    assert not _is_uninspected_runtime_image_operand(
-        {**reference, "status": "resolved"}, [command]
-    )
+    assert not _is_uninspected_runtime_image_operand({**reference, "status": "resolved"}, [command])
     assert not _is_uninspected_runtime_image_operand(
         {**reference, "reference_kind": ReferenceKind.QUOTED_OR_CODE}, [command]
     )
@@ -334,4 +332,3 @@ def test_unacquired_runtime_image_stays_partial_in_real_no_llm_cli(tmp_path: Pat
         row["status"] == "missing" and "source.png" in row["evidence"]
         for row in completeness["references"]
     )
-
