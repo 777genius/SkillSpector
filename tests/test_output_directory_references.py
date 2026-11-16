@@ -197,3 +197,25 @@ def test_original_null_fingerprint_finding_is_not_skipped() -> None:
             [{**scanned, "location": {"file": "SKILL.md", "start_line": 2}}],
             "pinned-source",
         )
+
+
+def test_risk_recommendation_cannot_be_weakened_by_e2e_exception() -> None:
+    """Only exact SAFE -> CAUTION with all independent fields unchanged is allowed."""
+    e2e = runpy.run_path(
+        str(Path(__file__).resolve().parents[1]
+            / "scripts" / "skillspector_2134_output_directory_e2e.py")
+    )
+    escalation = e2e["conservative_risk_escalation"]
+    safe = {"recommendation": "SAFE", "score": 0, "severity": "LOW",
+            "max_issue_severity": "NONE"}
+    caution = {**safe, "recommendation": "CAUTION"}
+    assert escalation(safe, caution) is True
+    assert escalation(caution, safe) is False
+    assert escalation(safe, safe) is False
+    assert escalation(safe, {**caution, "score": 1}) is False
+    assert escalation(safe, {**caution, "severity": "HIGH"}) is False
+    assert escalation(safe, {**caution, "max_issue_severity": "HIGH"}) is False
+    assert escalation(safe, {**caution, "extra": "undocumented"}) is False
+    assert escalation({**safe, "extra": "missing"}, caution) is False
+    assert escalation(safe, {**safe, "recommendation": "UNKNOWN"}) is False
+    assert escalation(None, caution) is False

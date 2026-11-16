@@ -153,6 +153,24 @@ def issue_counter(report: dict) -> collections.Counter:
     )
 
 
+def conservative_risk_escalation(original: object, candidate: object) -> bool:
+    """Only an explicit SAFE -> CAUTION change with identical other risk data.
+
+    Never accept a downgrade, missing field, score/severity mutation or an
+    unknown recommendation. A changed recommendation is reported in proof.
+    """
+    if not isinstance(original, dict) or not isinstance(candidate, dict):
+        return False
+    if original.keys() != candidate.keys():
+        return False
+    if original.get("recommendation") != "SAFE" or candidate.get("recommendation") != "CAUTION":
+        return False
+    return all(
+        original[key] == candidate[key]
+        for key in original if key != "recommendation"
+    )
+
+
 def ensure_signed_findings_preserved(
     signed_findings: list[dict], scanned_issues: list[dict], source_id: str
 ) -> None:
@@ -332,7 +350,16 @@ def main() -> None:
             raise ValueError("unexpected output directory reference delta: " + case["id"])
         if issue_counter(old) != issue_counter(new):
             raise ValueError("security issue changed: " + case["id"])
-        if old.get("risk_assessment") != new.get("risk_assessment"):
+        # Signed security findings must survive even if recommendation becomes
+        # strictly more cautious. In particular preserve LP3 null fingerprints.
+        original = originals[case["id"]]
+        ensure_signed_findings_preserved(
+            original.get("findings", []), new["issues"], case["id"]
+        )
+        old_risk = old.get("risk_assessment")
+        new_risk = new.get("risk_assessment")
+        risk_escalation = conservative_risk_escalation(old_risk, new_risk)
+        if old_risk != new_risk and not risk_escalation:
             # Preserve the ORIGINAL failed proof instead of silently discarding it.
             # Diagnostic evidence is not a successful security comparison and
             # can never authorize a Complete/production promotion.
@@ -393,13 +420,6 @@ def main() -> None:
                 for item in new_refs
             ):
                 raise ValueError("mandatory unacquired sibling reference was hidden: " + case["id"])
-
-        original = originals[case["id"]]
-        # All signed groups count, including LP3 findings without a matching
-        # fingerprint. Never silently skip a security warning with null identity.
-        ensure_signed_findings_preserved(
-            original.get("findings", []), new["issues"], case["id"]
-        )
 
         old_coverage = old["analysis_completeness"]
         coverage = new["analysis_completeness"]
@@ -465,6 +485,9 @@ def main() -> None:
             "unacquired_required_sources": list(external_prerequisites),
             "original_signed_finding_groups": len(original.get("findings", [])),
             "security_findings_preserved": True, "source_bytes_unchanged": True,
+            "conservative_risk_escalation": risk_escalation,
+            "old_recommendation": old_risk.get("recommendation") if isinstance(old_risk, dict) else None,
+            "new_recommendation": new_risk.get("recommendation") if isinstance(new_risk, dict) else None,
             "production_partial_reduction": 0,
         })
     receipt = {
@@ -478,6 +501,9 @@ def main() -> None:
             item["external_prerequisite_control"] for item in results),
         "results": results,
         "safe_for_automatic_publication": False, "production_modified": False,
+        "conservative_risk_escalations": sum(
+            item["conservative_risk_escalation"] for item in results
+        ),
         "production_partial_reduction": 0,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
