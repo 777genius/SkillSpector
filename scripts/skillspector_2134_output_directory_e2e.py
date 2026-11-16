@@ -314,6 +314,26 @@ def main() -> None:
         blob = hashlib.sha1(b"blob " + str(len(body)).encode("ascii") + b"\0" + body).hexdigest()
         digest, entries = tree_digest(source)
         if blob != case["blob"] or digest != case["tree"] or entries != case["entries"]:
+            # Preserve a bounded, non-publishing proof even when a pinned Git
+            # checkout differs from the historical acquired package.
+            forensic = {
+                "schema_version": 1,
+                "kind": "immutable-source-tree-mismatch",
+                "source_id": case["id"],
+                "source_revision": case["revision"],
+                "signed_skill_blob": case["blob"],
+                "checkout_skill_blob": blob,
+                "signed_tree_digest": case["tree"],
+                "checkout_tree_digest": digest,
+                "signed_entry_count": case["entries"],
+                "checkout_entry_count": entries,
+                "safe_for_automatic_publication": False,
+                "production_modified": False,
+            }
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(
+                json.dumps(forensic, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+            )
             raise ValueError("immutable source blob/tree differs: " + case["id"])
 
         old, old_exit = scan(args.baseline / ".venv/bin/skillspector", source)
