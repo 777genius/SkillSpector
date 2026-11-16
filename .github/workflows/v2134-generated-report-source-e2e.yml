@@ -269,7 +269,7 @@ jobs:
                   output=Path(os.environ["RUNNER_TEMP"])/"generated-report-output-proof"
                   output.mkdir(parents=True,exist_ok=True)
                   (output/"security-parity-failure.json").write_text(
-                      json.dumps(forensic,sort_keys=True,indent=2)+"\\n")
+                      json.dumps(forensic,sort_keys=True,indent=2)+"\n")
                   print(json.dumps(forensic,sort_keys=True),flush=True)
               assert not missing_signed, (
                   "original signed security finding group lost",relative,missing_signed)
