@@ -64,6 +64,11 @@ _JSON_VERSION_FIELD = re.compile(
 _XML_VERSION_DECLARATION = re.compile(
     r'^[ \t]*<\?xml[ \t]+version="(?P<version>1\.[01])"[ \t]+encoding="UTF-8"[ \t]*\?>[ \t]*$'
 )
+# The exact SPDX name is a scalar in Skill frontmatter, not a file load.
+# A license filename keeps ordinary missing/resolved reference accounting.
+_FRONTMATTER_APACHE_LICENSE = re.compile(
+    r"""^license:[ \t]*(?P<quote>['"])(?P<license>Apache-2\.0)(?P=quote)[ \t]*$"""
+)
 _QUOTED_OR_CODE_PATH = re.compile(
     r"(?:`|'|\")((?:\./)?(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12})(?:`|'|\")"
 )
@@ -538,6 +543,9 @@ def _candidate_strings(
                 in_html = False
                 html_end = None
         cleaned_line = " ".join(line.strip().split())
+        license_metadata = (
+            _FRONTMATTER_APACHE_LICENSE.fullmatch(stripped_line) if line_in_frontmatter else None
+        )
         declaration = (
             _DOCUMENTATION_IMAGE_DECLARATION.fullmatch(stripped_line)
             if len(stripped_line) <= _MAX_MARKDOWN_DESTINATION_CHARS
@@ -652,19 +660,26 @@ def _candidate_strings(
                             match.start + 1,
                             _evidence(cleaned_line, match.start + 1),
                             reference_kind,
-                            reference_kind is ReferenceKind.QUOTED_OR_CODE
-                            and not line_in_frontmatter
-                            and not line_in_fence
-                            and not line_is_indented_code
-                            and not line_in_html
-                            and inline_code_delimiter == 1
-                            and (
-                                _is_documented_data_field(
-                                    text, line_offset + match.start, line_offset + match.end
+                            (
+                                reference_kind is ReferenceKind.QUOTED_OR_CODE
+                                and not line_in_frontmatter
+                                and not line_in_fence
+                                and not line_is_indented_code
+                                and not line_in_html
+                                and inline_code_delimiter == 1
+                                and (
+                                    _is_documented_data_field(
+                                        text, line_offset + match.start, line_offset + match.end
+                                    )
+                                    or _is_documented_address_or_version(
+                                        text, line_offset + match.start, line_offset + match.end
+                                    )
                                 )
-                                or _is_documented_address_or_version(
-                                    text, line_offset + match.start, line_offset + match.end
-                                )
+                            )
+                            or (
+                                reference_kind is ReferenceKind.QUOTED_OR_CODE
+                                and license_metadata is not None
+                                and (match.start, match.end) == license_metadata.span("license")
                             ),
                         )
                     )
