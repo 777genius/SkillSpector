@@ -269,11 +269,7 @@ def _is_generated_report_output(text: str, start: int, end: int) -> bool:
     # step. Do not let an unrelated "Required files" section qualify.
     prefix = text[max(0, line_start - 384) : line_start]
     heading = next(
-        (
-            row.strip()
-            for row in reversed(prefix.splitlines())
-            if row.lstrip().startswith("#")
-        ),
+        (row.strip() for row in reversed(prefix.splitlines()) if row.lstrip().startswith("#")),
         "",
     )
     return _GENERATED_REPORT_STEP.fullmatch(heading) is not None
