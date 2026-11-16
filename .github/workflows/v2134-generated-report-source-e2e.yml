@@ -176,6 +176,17 @@ jobs:
                   rows.append(key(item))
               return collections.Counter(rows)
 
+          # Strictly source-bound 2.13.1 P2 historical BOM policy difference.
+          # 2.13.4 excludes only the leading U+FEFF BOM, not embedded controls.
+          # Never use this non-publishing receipt to authorize signed promotion.
+          signed_bom_policy={
+              "plugins/agents-security/skills/authz-coverage-gap-detector":
+                  "d69e4bb59cf9635b0ae2d7afcee7bf884a823992",
+              "plugins/agents-runtime/skills/cache-effectiveness-auditor":
+                  "01a2d6fb402f83c358fed04dc8d92af319ea783a",
+          }
+          signed_bom_identity=("P2","HIGH","README.md",1,
+              "35211fd9a699aec0a131b9fd6ba4f68b32f4df635ea39dfd179ab2451e5a82f9")
           results=[]
           for relative,blob,original_tree,line,filename,count in cases:
               source=Path("source")/relative
@@ -237,6 +248,41 @@ jobs:
               # even when the scanner drops an independent signed finding.
               # Do not substitute a count-only check or promote this source.
               missing_signed=[(k,n,observed[k]) for k,n in signed.items() if observed[k]<n]
+              historical_bom_differences=[]
+              if missing_signed and relative in signed_bom_policy:
+                  # Only one exact *historical* signed P2 false-positive row
+                  # may differ. All actual hidden instruction findings remain strict.
+                  assert missing_signed==[(signed_bom_identity,1,0)], (
+                      "unexpected signed finding loss",relative,missing_signed)
+                  raw_readme=(source/"README.md").read_bytes()
+                  actual_blob=hashlib.sha1(
+                      b"blob "+str(len(raw_readme)).encode()+b"\0"+raw_readme
+                  ).hexdigest()
+                  assert actual_blob==signed_bom_policy[relative], (
+                      "BOM source Git blob changed",relative,actual_blob)
+                  assert raw_readme.startswith(b"\xef\xbb\xbf")
+                  assert raw_readme.count(b"\xef\xbb\xbf")==1
+                  assert not any(
+                      (q.get("id"),q.get("severity"),
+                       q.get("location",{}).get("file"),
+                       q.get("location",{}).get("start_line"),
+                       q.get("match_fingerprint"))==signed_bom_identity
+                      for q in old["issues"]
+                  ), "2.13.4 baseline unexpectedly restored old P2"
+                  signed_p2=[q for q in original["findings"] if
+                      (q.get("rule"),q.get("severity"),q.get("path"),
+                       q.get("line"),q.get("match_fingerprint"))==signed_bom_identity]
+                  assert len(signed_p2)==1 and signed_p2[0].get("raw_count")==1
+                  historical_bom_differences.append({
+                      "kind":"verified-leading-bom-p2-policy-difference",
+                      "original_signed_finding":signed_p2[0],
+                      "original_scanner":"2.13.1",
+                      "baseline_and_candidate_scanner":"2.13.4",
+                      "original_readme_git_blob":actual_blob,
+                      "historical_evidence_source":"immutable-signed-v3",
+                      "requires_production_signer_review":True,
+                  })
+                  missing_signed=[]
               if missing_signed:
                   old_observed=collections.Counter()
                   for issue in old["issues"]:
@@ -289,7 +335,9 @@ jobs:
               results.append({"path":relative,"source_digest":tree,"old_status":old["analysis_completeness"]["status"],
                   "new_status":status["status"],"old_exit":a,"new_exit":b,
                   "removed_generated_output_rows":1,"noncoverage_findings_preserved":True,
-                  "signed_findings_preserved":True,"source_bytes_unchanged":True,
+                  "signed_findings_preserved_in_candidate":not historical_bom_differences,
+                  "historical_signed_bom_findings_retained":historical_bom_differences,
+                  "source_bytes_unchanged":True,
                   "candidate_complete":status["status"]=="complete" and status["is_complete"] is True})
           receipt={"schema_version":1,"kind":"skillspector-2134-generated-report-output-three-source",
               "original_report_commit":"7771404dcdfc5b3855f1319b5e9a2bc19d0c7acf",
@@ -297,6 +345,7 @@ jobs:
               "candidate_commit":subprocess.check_output(["git","-C","new","rev-parse","HEAD"],text=True).strip(),
               "source_count":len(results),"results":results,
               "production_modified":False,"production_partial_reduction":0,
+              "historical_bom_policy_review_required":True,
               "safe_for_automatic_publication":False}
           output=Path(os.environ["RUNNER_TEMP"])/"generated-report-output-proof"
           output.mkdir(parents=True,exist_ok=True)

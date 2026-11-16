@@ -80,3 +80,20 @@ def test_independent_input_not_suppressed_by_output_in_same_source(tmp_path: Pat
         row["status"] == "missing" and "source-config.md" in row["evidence"]
         for row in result.records
     )
+
+
+def test_leading_bom_exemption_preserves_embedded_zero_width() -> None:
+    """Only the UTF-8 BOM at the start may be excluded from P2."""
+    from skillspector.nodes.analyzers.static_patterns_prompt_injection import (
+        _ZERO_WIDTH_PATTERN,
+        _p2_pattern_matches,
+    )
+
+    def positions(content: str) -> list[int]:
+        return [match.start() for match in _p2_pattern_matches(content, _ZERO_WIDTH_PATTERN)]
+
+    assert positions("\ufeff# README\n") == []
+    embedded_bom = "# Heading\ntext\ufeffhidden"
+    embedded_zero_width = "# Heading\ntext\u200bhidden"
+    assert positions(embedded_bom) == [embedded_bom.index("\ufeff")]
+    assert positions(embedded_zero_width) == [embedded_zero_width.index("\u200b")]
