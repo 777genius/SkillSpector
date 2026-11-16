@@ -370,7 +370,7 @@ def main() -> None:
             }
             args.output.parent.mkdir(parents=True, exist_ok=True)
             args.output.write_text(
-                json.dumps(diagnostic, sort_keys=True, indent=2) + "\\n", encoding="utf-8"
+                json.dumps(diagnostic, sort_keys=True, indent=2) + "\n", encoding="utf-8"
             )
             raise ValueError("independent security risk assessment changed: " + case["id"])
         for required in external_prerequisites:
