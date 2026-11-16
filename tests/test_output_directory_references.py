@@ -104,7 +104,17 @@ def test_output_directory_malformed_quote_never_suppresses_input(
     assert _is_output_directory_argument(command, start, start + len("./missing")) is is_output
 
 
-@pytest.mark.parametrize("ending", ["\\n", "\\r\\n", "\\r"])\ndef test_output_directory_line_endings_are_not_file_inputs(ending: str) -> None:\n    command = "program --output-dir ./results" + ending\n    start = command.index("./results")\n    assert _is_output_directory_argument(command, start, start + len("./results"))\n    assert not _is_output_directory_argument(\n        "program --output-dir ./results\\nnext", start, start + len("./results")\n    )\n\n\ndef test_output_directory_does_not_hide_other_input_or_script_paths(tmp_path: Path) -> None:
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"])
+def test_output_directory_line_endings_are_not_file_inputs(ending: str) -> None:
+    command = "program --output-dir ./results" + ending
+    start = command.index("./results")
+    assert _is_output_directory_argument(command, start, start + len("./results"))
+    assert not _is_output_directory_argument(
+        "program --output-dir ./results\nnext", start, start + len("./results")
+    )
+
+
+def test_output_directory_does_not_hide_other_input_or_script_paths(tmp_path: Path) -> None:
     command = "python3 scripts/process.py ./input --output-dir ./output"
     result = resolve(tmp_path, command)
     missing_columns = {

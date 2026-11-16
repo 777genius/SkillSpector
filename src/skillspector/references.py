@@ -238,7 +238,8 @@ def _is_output_directory_argument(line: str, start: int, end: int) -> bool:
         remaining = remaining[1:]
     elif remaining.startswith(("'", '"')):
         return False
-    # splitlines(keepends=True) retains terminal LF/CRLF; those are not operands.\n    return remaining in {"", "\\n", "\\r", "\\r\\n"} or remaining[0] in " \t;&|"
+    # splitlines(keepends=True) retains terminal LF/CRLF; those are not operands.
+    return remaining in {"", "\n", "\r", "\r\n"} or remaining[0] in " \t;&|"
 
 
 def _evidence(cleaned_line: str, column: int) -> str:
