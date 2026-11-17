@@ -35,6 +35,7 @@ def test_documented_api_search_does_not_invent_missing_file(tmp_path: Path) -> N
         SEARCH + "\n\nMention .sql.exec without a call.",
         SEARCH + "\n\nThe method .sql.exec( is shown in prose, not a fenced example.",
         SEARCH + "\n\n```bash\necho .sql.exec(\n```",
+        SEARCH + "\n\n```typescript\n// comment .sql.exec(\n```",
         "Read `sql.exec` as a required file." + CALL,
         "Search: `blockConcurrencyWhile`, `idFromName`, `getByName`, `file.exec`" + CALL,
         "Search: `blockConcurrencyWhile`, `idFromName`, `sql.exec`" + CALL,
