@@ -135,9 +135,7 @@ _DATA_FIELD_FILE_CONTEXT = re.compile(
 )
 
 
-def _is_documented_sql_api_lookup(
-    line: str, start: int, end: int, following: str
-) -> bool:
+def _is_documented_sql_api_lookup(line: str, start: int, end: int, following: str) -> bool:
     """An evidenced API search token is not a bundled file dependency."""
     match = _SQL_API_SEARCH_LINE.fullmatch(line)
     return (
@@ -732,7 +730,9 @@ def _candidate_strings(
                                         text, line_offset + match.start, line_offset + match.end
                                     )
                                     or _is_documented_sql_api_lookup(
-                                        stripped_line, match.start, match.end,
+                                        stripped_line,
+                                        match.start,
+                                        match.end,
                                         text[source_offset : source_offset + 4096],
                                     )
                                 )
