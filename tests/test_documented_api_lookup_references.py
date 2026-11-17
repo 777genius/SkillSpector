@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """Exact Cloudflare API-search term, with adversarial real-file controls."""
+
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,9 @@ CALL = "\n\n```typescript\nconst rows = this.ctx.storage.sql.exec(\"SELECT 1\");
 
 def resolve(root: Path, body: str, known: list[str] | None = None):
     return resolve_bundle_references_with_metadata(
-        root, source_path="SKILL.md", source_text=body,
+        root,
+        source_path="SKILL.md",
+        source_text=body,
         known_paths=["SKILL.md"] if known is None else known,
     )
 
@@ -53,16 +56,20 @@ def test_unproven_or_explicit_file_use_stays_missing(tmp_path: Path, body: str) 
 def test_real_inventory_match_takes_precedence(tmp_path: Path) -> None:
     result = resolve(tmp_path, SEARCH + CALL, ["SKILL.md", "sql.exec"])
     assert result.complete
-    assert any(row["status"] == "resolved" and row["target_path"] == "sql.exec"
-               for row in result.records), result.records
+    assert any(
+        row["status"] == "resolved" and row["target_path"] == "sql.exec"
+        for row in result.records
+    ), result.records
 
 
 def test_same_token_independent_missing_link_stays_visible(tmp_path: Path) -> None:
     body = SEARCH + CALL + "\nLoad [the file](sql.exec) before running."
     result = resolve(tmp_path, body)
     assert result.complete
-    assert any(row["status"] == "missing" and row["reference_kind"] == "markdown_link"
-               for row in result.records), result.records
+    assert any(
+        row["status"] == "missing" and row["reference_kind"] == "markdown_link"
+        for row in result.records
+    ), result.records
 
 
 def test_existing_uninspected_symlink_stays_partial(tmp_path: Path) -> None:
@@ -73,5 +80,7 @@ def test_existing_uninspected_symlink_stays_partial(tmp_path: Path) -> None:
         pytest.skip("symlinks unavailable")
     result = resolve(tmp_path, SEARCH + CALL)
     assert result.complete
-    assert any(row["status"] == "uninspected" and row["disposition"] == "partial"
-               for row in result.records), result.records
+    assert any(
+        row["status"] == "uninspected" and row["disposition"] == "partial"
+        for row in result.records
+    ), result.records
