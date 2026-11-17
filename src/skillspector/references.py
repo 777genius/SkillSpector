@@ -99,8 +99,8 @@ _SQL_API_SEARCH_LINE = re.compile(
 _SQL_API_CALL = re.compile(
     r"(?m)^[ \t]*```(?:typescript|ts|javascript|js)[ \t]*\r?\n"
     r"(?:(?!^[ \t]*```)[\s\S]){0,3072}?"
-    r"^[ \t]*(?!//|/\*|\*|#)(?:const\b|let\b|var\b|return\b|await\b|this\.)"
-    r"[^\r\n]{0,256}?\.\s*sql\s*\.\s*exec\s*(?:<[^>\n]{1,96}>)?\s*\("
+    r"^[ \t]*(?!//|/\*|\*|#)(?:(?:const|let|var|return|await)\b[^\"\'`\r\n]{0,256}?)?"
+    r"\bthis\.ctx\.storage\.sql\.exec\s*(?:<[^>\n]{1,96}>)?\s*\("
 )
 
 _DOTTED_IDENTIFIER = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", re.ASCII)
