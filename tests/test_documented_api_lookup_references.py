@@ -9,9 +9,6 @@ import pytest
 
 from skillspector.references import resolve_bundle_references_with_metadata
 
-SEARCH = "Search: `blockConcurrencyWhile`, `idFromName`, `getByName`, `setAlarm`, `sql.exec`"
-CALL = "\n\n```typescript\nconst rows = this.ctx.storage.sql.exec(\"SELECT 1\");\n```\n"
-
 
 def resolve(root: Path, body: str, known: list[str] | None = None):
     return resolve_bundle_references_with_metadata(
@@ -20,6 +17,10 @@ def resolve(root: Path, body: str, known: list[str] | None = None):
         source_text=body,
         known_paths=["SKILL.md"] if known is None else known,
     )
+
+
+SEARCH = "Search: `blockConcurrencyWhile`, `idFromName`, `getByName`, `setAlarm`, `sql.exec`"
+CALL = "\n\n```typescript\nconst rows = this.ctx.storage.sql.exec(\"SELECT 1\");\n```\n"
 
 
 def test_documented_api_search_does_not_invent_missing_file(tmp_path: Path) -> None:
