@@ -6,7 +6,6 @@
 from pathlib import Path
 
 import pytest
-
 from skillspector.references import resolve_bundle_references_with_metadata
 
 
