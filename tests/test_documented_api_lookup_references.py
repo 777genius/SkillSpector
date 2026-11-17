@@ -9,7 +9,6 @@ import pytest
 
 from skillspector.references import resolve_bundle_references_with_metadata
 
-
 SEARCH = "Search: `blockConcurrencyWhile`, `idFromName`, `getByName`, `setAlarm`, `sql.exec`"
 CALL = "\n\n```typescript\nconst rows = this.ctx.storage.sql.exec(\"SELECT 1\");\n```\n"
 
