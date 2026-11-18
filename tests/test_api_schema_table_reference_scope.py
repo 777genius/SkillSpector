@@ -70,10 +70,7 @@ def test_schema_property_cannot_hide_file_like_missing_dependencies(
     source = HEADER + f"| `{filename}` | string | Required source artifact. |\n"
     result = resolve(tmp_path, source)
     assert result.complete is True
-    assert any(
-        row["status"] == "missing" and filename in row["evidence"]
-        for row in result.records
-    )
+    assert any(row["status"] == "missing" and filename in row["evidence"] for row in result.records)
 
 
 def test_unproven_schema_context_does_not_discard_missing_reference(
@@ -82,8 +79,7 @@ def test_unproven_schema_context_does_not_discard_missing_reference(
     invalid = (
         "| File | Type | Description |\n|------|------|-------------|\n"
         "| `data.id` | uuid | Read from file. |\n",
-        "| Field | Type | Description |\n"
-        "| `data.id` | uuid | No delimiter. |\n",
+        "| Field | Type | Description |\n| `data.id` | uuid | No delimiter. |\n",
         "| Field | Type | Description |\n|-------|------|-------------|\n"
         "| `data.id` | file | Real required file. |\n",
         "~~~markdown\n" + HEADER + FIELD_ROWS + "~~~\n",
@@ -117,8 +113,7 @@ def test_real_webhook_event_type_table_values_are_not_missing_paths(
     # team-telnyx/ai@ee1dee2b5940ea9f370641746f82a3099918bbc4
     # skills/telnyx-whatsapp-java/SKILL.md, original lines 306-312.
     body = (
-        HEADER
-        + "| \x60event_type\x60 | string | \x60whatsapp.template.approved\x60, "
+        HEADER + "| \x60event_type\x60 | string | \x60whatsapp.template.approved\x60, 
         "\x60whatsapp.template.rejected\x60, \x60whatsapp.template.disabled\x60 |\n"
         + "| \x60payload.status\x60 | string | New template status |\n"
     )
