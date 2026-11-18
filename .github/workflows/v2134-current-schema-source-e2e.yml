@@ -1,0 +1,212 @@
+name: SkillSpector 2.13.4 current schema sources read-only E2E
+
+on:
+  pull_request:
+    paths:
+      - "src/skillspector/references.py"
+      - "tests/test_api_schema_table_reference_scope.py"
+      - ".github/workflows/v2134-current-schema-source-e2e.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-current-source:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 777genius/SkillSpector
+          ref: 0cdf5fe45695ad15cf0250d1ada892697e6cb79b
+          persist-credentials: false
+          path: old
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 777genius/SkillSpector
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          path: new
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: team-telnyx/ai
+          ref: ee1dee2b5940ea9f370641746f82a3099918bbc4
+          sparse-checkout: |
+            skills/telnyx-whatsapp-java
+            skills/telnyx-fax-ruby
+          persist-credentials: false
+          path: source
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 777genius/universal-agent-plugins-registry
+          ref: d0185d28f4585541c878219154305e60cb5abf83
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            reports/skillspector/v3/index.json
+            reports/skillspector/v3/shards/964ef65af829cde2b1edd041aa01ee5bb55f28e656df493a75ccac8b05da49d8.json
+          persist-credentials: false
+          path: original-v3
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - name: Lock exact real source and native scanner identities
+        run: |
+          set -euo pipefail
+          test "$(git -C old rev-parse HEAD)" = 0cdf5fe45695ad15cf0250d1ada892697e6cb79b
+          test "$(git -C new rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test "$(git -C source rev-parse HEAD)" = ee1dee2b5940ea9f370641746f82a3099918bbc4
+          test "$(git -C original-v3 rev-parse HEAD)" = d0185d28f4585541c878219154305e60cb5abf83
+          test "$(git -C source rev-parse ee1dee2b5940ea9f370641746f82a3099918bbc4:skills/telnyx-whatsapp-java/SKILL.md)" = 94c5b28926a1f1535aefdd4edc910b619cc4debd
+          test "$(git -C source rev-parse ee1dee2b5940ea9f370641746f82a3099918bbc4:skills/telnyx-fax-ruby/SKILL.md)" = 5a2e79c01783df84cc8e862151182a4f95cae7cf
+          python3 -m pip install --disable-pip-version-check uv==0.13.4
+          uv sync --directory old --frozen --no-dev --python 3.12
+          uv sync --directory new --frozen --extra dev --python 3.12
+      - name: Ruff and focused fail-closed tests
+        run: |
+          set -euo pipefail
+          new/.venv/bin/ruff check new/src/skillspector/references.py new/tests/test_api_schema_table_reference_scope.py
+          new/.venv/bin/ruff format --check new/src/skillspector/references.py new/tests/test_api_schema_table_reference_scope.py
+          new/.venv/bin/python -m pytest -q new/tests/test_api_schema_table_reference_scope.py
+      - name: Real immutable A/B no-LLM evidence and original v3 report proof
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import copy, hashlib, json, os, subprocess, tempfile
+          from pathlib import Path
+          root=Path.cwd()
+          report_root=root/"original-v3/reports/skillspector/v3"
+          index=json.loads((report_root/"index.json").read_bytes())
+          assert index["schema_version"]==3
+          assert index["source_commit"]=="fe701bc437d2e9bd6ae681edef9e90df833aedd8"
+          assert index["scanner"]=={"id":"skillspector","version":"2.13.1",
+              "revision":"f3b25697d76256998ca9d42c198d256258d4c035"}
+          descriptor=next(d for d in index["shards"] if d["path"]==
+              "shards/964ef65af829cde2b1edd041aa01ee5bb55f28e656df493a75ccac8b05da49d8.json")
+          raw=(report_root/descriptor["path"]).read_bytes()
+          assert descriptor["repository"]=="team-telnyx/ai"
+          assert len(raw)==descriptor["bytes"]==8380263
+          assert "sha256:"+hashlib.sha256(raw).hexdigest()==descriptor["digest"]
+          shard=json.loads(raw)
+          assert len(shard["records"])==descriptor["record_count"]==213
+
+          domain=b"agentplugins.package-tree\x00sha256\x00v1"
+          def source_tree_digest(path):
+              entries=[]
+              for node in path.rglob("*"):
+                  relative=node.relative_to(path).as_posix()
+                  assert not node.is_symlink()
+                  if node.is_dir():
+                      entries.append((relative.encode(),b"directory",b"040000",b"",b""))
+                  elif node.is_file():
+                      mode=b"100755" if node.stat().st_mode & 0o111 else b"100644"
+                      entries.append((relative.encode(),b"file",mode,b"",node.read_bytes()))
+                  else: raise AssertionError("unexpected source object")
+              digest=hashlib.sha256()
+              digest.update(len(domain).to_bytes(8,"big"));digest.update(domain)
+              for relative,kind,mode,target,body in sorted(entries,key=lambda row:row[0]):
+                  for field in (b"entry",relative,kind,mode,target):
+                      digest.update(len(field).to_bytes(8,"big"));digest.update(field)
+                  digest.update(len(body).to_bytes(8,"big"))
+                  if kind==b"file":digest.update(body)
+              return "sha256:"+digest.hexdigest()
+          def run(native,path):
+              with tempfile.TemporaryDirectory(prefix="skillspector-schema-proof-") as home:
+                  env=dict(os.environ,HOME=home,XDG_CACHE_HOME=home)
+                  process=subprocess.run([str((root/native/".venv/bin/skillspector").resolve()),
+                      "scan",str(path),"--no-llm","--format","json","--fail-on-incomplete"],
+                      cwd=root,capture_output=True,text=True,env=env,timeout=240)
+                  assert process.returncode in (0,1), process.stderr[-2000:]
+                  result=json.loads(process.stdout)
+                  assert isinstance(result["findings"],list)
+                  assert isinstance(result["analysis_completeness"]["references"],list)
+                  return process.returncode,result
+          def stable_findings(report):
+              rows=copy.deepcopy(report["findings"])
+              for group in rows:
+                  group.pop("finding_ids",None)
+                  for occurrence in group.get("occurrences",[]):
+                      occurrence.pop("finding_id",None)
+              return sorted(json.dumps(row,sort_keys=True,ensure_ascii=False) for row in rows)
+          def normalized_references(report):
+              return {json.dumps(r,sort_keys=True,ensure_ascii=False):r
+                  for r in report["analysis_completeness"]["references"]}
+          cases=[
+              ("skills/telnyx-whatsapp-java",
+               "plugin:community:366fa93b2dcf29a6af03a6d21cb5dbc6/telnyx-whatsapp-java",
+               "sha256:380fd8ca1df2554cf201eb01dd44ecf900b8f3ae4ab430f7c43dde59b80edc5a",0),
+              ("skills/telnyx-fax-ruby",
+               "plugin:community:366fa93b2dcf29a6af03a6d21cb5dbc6/telnyx-fax-ruby",
+               "sha256:60385025a25701223a6e68f399a396329cc5d0279588360732df5dc77a3f3556",2),
+          ]
+          outcomes=[]
+          for path,identifier,digest,count in cases:
+              original=next(row for row in shard["records"] if row["id"]==identifier)
+              assert original["status"]=="partial" and original["freshness"]=="current"
+              assert original["source"]=={"repository":"team-telnyx/ai",
+                  "revision":"ee1dee2b5940ea9f370641746f82a3099918bbc4",
+                  "path":path,"content_digest":digest}
+              assert original["finding_count"]==original["finding_group_count"]==count
+              assert original["findings_truncated"] is False
+              assert original["coverage"]["grouping_complete"] is True
+              source=root/"source"/path
+              assert source_tree_digest(source)==digest
+              old_exit,old=run("old",source)
+              new_exit,new=run("new",source)
+              assert stable_findings(old)==stable_findings(new), "native security group drift"
+              for signed in original["findings"]:
+                  signed_identity=(signed["rule"],signed["severity"],signed["path"],signed["line"])
+                  for candidate in (old,new):
+                      assert any((g.get("rule"),g.get("severity"),g.get("path"),
+                          g.get("line"))==signed_identity for g in candidate["findings"]), (
+                          "original signed security group was lost",signed_identity)
+              left,right=normalized_references(old),normalized_references(new)
+              assert set(right).issubset(left), "new/changed reference evidence needs review"
+              removed=[left[key] for key in sorted(set(left)-set(right))]
+              assert removed, "current source lacks candidate classification improvement"
+              assert all(row["status"]=="missing"
+                  and row["reference_kind"]=="quoted_or_code"
+                  and row["evidence"].lstrip().startswith("| `")
+                  and row["source_path"]=="SKILL.md"
+                  for row in removed), "unrelated/missing real dependency concealed"
+              if path.endswith("telnyx-whatsapp-java"):
+                  labels=("whatsapp.template.approved","whatsapp.template.rejected",
+                      "whatsapp.template.disabled")
+                  for label in labels:
+                      assert any(label in row["evidence"] for row in removed), (
+                          "real current schema event not resolved",label)
+                  assert not [row for row in new["analysis_completeness"]["references"]
+                      if row["status"]=="missing" and any(
+                          label in row["evidence"] for label in labels)]
+              outcomes.append({"id":identifier,"source_digest":digest,
+                  "published_status":original["status"],"published_findings":count,
+                  "old_exit":old_exit,"new_exit":new_exit,
+                  "old_coverage":old["analysis_completeness"].get("status"),
+                  "new_coverage":new["analysis_completeness"].get("status"),
+                  "old_missing":sum(x["status"]=="missing" for x in left.values()),
+                  "new_missing":sum(x["status"]=="missing" for x in right.values()),
+                  "removed_reference_rows":len(removed),
+                  "stable_security_parity":True})
+          proof={"schema_version":1,"kind":"v2134-current-source-api-schema-readonly",
+              "published_ref":"d0185d28f4585541c878219154305e60cb5abf83",
+              "published_index_sha256":hashlib.sha256((report_root/"index.json").read_bytes()).hexdigest(),
+              "published_shard_sha256":hashlib.sha256(raw).hexdigest(),
+              "original_source_revision":"ee1dee2b5940ea9f370641746f82a3099918bbc4",
+              "scanner_old":"0cdf5fe45695ad15cf0250d1ada892697e6cb79b",
+              "candidate_scanner":os.getenv("GITHUB_SHA","PR_HEAD"),
+              "cases":outcomes,"publication_authorized":False,
+              "real_production_partial_to_complete":0,
+              "no_current_status_promoted":True}
+          (root/"schema-current-proof.json").write_text(
+              json.dumps(proof,sort_keys=True,indent=2)+"\n",encoding="utf-8")
+          print(json.dumps(proof,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: skillspector-current-schema-source-proof
+          path: schema-current-proof.json
+          if-no-files-found: warn
+          retention-days: 7
