@@ -89,6 +89,20 @@ _INLINE_CODE_COMMAND_PATH = re.compile(
     r"pwsh|powershell)\b[ \t]+"
     r"((?:\./)?(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+)(?![\w/.-])"
 )
+# A documented Durable Objects API search is not automatically a file load.
+# Scope to the corroborated SQL method; inventory and other uses stay visible.
+_SQL_API_SEARCH_LINE = re.compile(
+    r"^[ \t]*Search:[ \t]*\`[A-Za-z_]\w*\`(?:[ \t]*,[ \t]*\`[A-Za-z_]\w*\`){2,}"
+    r"[ \t]*,[ \t]*\`(?P<method>sql\.exec)\`[ \t]*$"
+)
+# A prose claim is insufficient: corroborate inside an actual TS/JS fence.
+_SQL_API_CALL = re.compile(
+    r"(?m)^[ \t]*```(?:typescript|ts|javascript|js)[ \t]*\r?\n"
+    r"(?:(?!^[ \t]*```)[\s\S]){0,3072}?"
+    r"^[ \t]*(?!//|/\*|\*|#)(?:(?:const|let|var|return|await)\b[^\"\'`\r\n]{0,256}?)?"
+    r"\bthis\.ctx\.storage\.sql\.exec\s*(?:<[^>\n]{1,96}>)?\s*\("
+)
+
 _DOTTED_IDENTIFIER = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", re.ASCII)
 _DATA_FIELD_PREFIX = re.compile(
     r"(?:(?:Use|Inspect|Read|Check)[ \t\r\n]+)?(?:the[ \t\r\n]+|a[ \t\r\n]+)?"
@@ -119,6 +133,16 @@ _DATA_FIELD_FILE_CONTEXT = re.compile(
     r"curl|wget|chmod|cp|mv|rm)\b|[$|&<>\\]",
     re.IGNORECASE,
 )
+
+
+def _is_documented_sql_api_lookup(line: str, start: int, end: int, following: str) -> bool:
+    """An evidenced API search token is not a bundled file dependency."""
+    match = _SQL_API_SEARCH_LINE.fullmatch(line)
+    return (
+        match is not None
+        and (start, end) == match.span("method")
+        and _SQL_API_CALL.search(following[:4096]) is not None
+    )
 
 
 def _is_documented_data_field(text: str, start: int, end: int) -> bool:
@@ -704,6 +728,12 @@ def _candidate_strings(
                                     )
                                     or _is_documented_address_or_version(
                                         text, line_offset + match.start, line_offset + match.end
+                                    )
+                                    or _is_documented_sql_api_lookup(
+                                        stripped_line,
+                                        match.start,
+                                        match.end,
+                                        text[source_offset : source_offset + 4096],
                                     )
                                 )
                             )
