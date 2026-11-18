@@ -195,7 +195,7 @@ jobs:
               "published_shard_sha256":hashlib.sha256(raw).hexdigest(),
               "original_source_revision":"ee1dee2b5940ea9f370641746f82a3099918bbc4",
               "scanner_old":"0cdf5fe45695ad15cf0250d1ada892697e6cb79b",
-              "candidate_scanner":subprocess.check_output(\n                  ["git","-C","new","rev-parse","HEAD"],text=True).strip(),
+              "candidate_scanner":subprocess.check_output(["git","-C","new","rev-parse","HEAD"],text=True).strip(),
               "cases":outcomes,"publication_authorized":False,
               "real_production_partial_to_complete":0,
               "no_current_status_promoted":True}
