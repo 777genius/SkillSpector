@@ -163,7 +163,9 @@ _API_SCHEMA_EVENT_LIST = re.compile(
     rf"(?:[ \t]*,[ \t]*\x60{_API_SCHEMA_EVENT_LABEL}\x60){{1,8}}[ \t]*",
     re.IGNORECASE,
 )
-_API_SCHEMA_EVENT_MEMBER = re.compile(rf"\x60(?P<value>{_API_SCHEMA_EVENT_LABEL})\x60", re.IGNORECASE)
+_API_SCHEMA_EVENT_MEMBER = re.compile(
+    rf"\x60(?P<value>{_API_SCHEMA_EVENT_LABEL})\x60", re.IGNORECASE
+)
 _AMBIGUOUS_FILE_EXTENSIONS = frozenset(
     {
         "md",
@@ -711,12 +713,8 @@ def _candidate_strings(
             or quote_depth
             or has_list
         )
-        schema_header = (
-            schema_context and _API_SCHEMA_HEADER.fullmatch(stripped_line) is not None
-        )
-        schema_divider = (
-            schema_context and _API_SCHEMA_DIVIDER.fullmatch(stripped_line) is not None
-        )
+        schema_header = schema_context and _API_SCHEMA_HEADER.fullmatch(stripped_line) is not None
+        schema_divider = schema_context and _API_SCHEMA_DIVIDER.fullmatch(stripped_line) is not None
         if schema_header:
             schema_table_active = False
             schema_header_pending = True
@@ -880,7 +878,9 @@ def _candidate_strings(
                                         schema_field_match is not None
                                         and (match.start, match.end)
                                         == schema_field_match.span("field")
-                                        and schema_field_match.group("field").rsplit(".", 1)[-1].lower()
+                                        and schema_field_match.group("field")
+                                        .rsplit(".", 1)[-1]
+                                        .lower()
                                         not in _AMBIGUOUS_FILE_EXTENSIONS
                                     )
                                     or _is_documented_schema_event_value(
