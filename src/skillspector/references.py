@@ -135,6 +135,25 @@ _DATA_FIELD_FILE_CONTEXT = re.compile(
 )
 
 
+# Markdown schema rows explicitly document object properties, not bundle paths.
+# A full Field / Type / Description table and typed row must be present.
+# This exemption is only consulted for missing targets: existing inventory,
+# ambiguity, executable paths and independent Markdown links remain visible.
+_API_SCHEMA_HEADER = re.compile(
+    r"^[ \t]*\|[ \t]*Field[ \t]*\|[ \t]*Type[ \t]*\|[ \t]*Description[ \t]*\|[ \t]*$",
+    re.IGNORECASE,
+)
+_API_SCHEMA_DIVIDER = re.compile(
+    r"^[ \t]*\|[ \t]*:?-{3,}:?[ \t]*\|[ \t]*:?-{3,}:?[ \t]*\|[ \t]*:?-{3,}:?[ \t]*\|[ \t]*$"
+)
+_API_SCHEMA_FIELD_ROW = re.compile(
+    r"^[ \t]*\|[ \t]*\x60(?P<field>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\x60[ \t]*"
+    r"\|[ \t]*(?:string|uuid|integer|number|boolean|date-time|uri|enum:[^|]{1,64})"
+    r"[ \t]*\|[ \t]*[^|\r\n]{1,512}[ \t]*\|[ \t]*$",
+    re.IGNORECASE,
+)
+
+
 def _is_documented_sql_api_lookup(line: str, start: int, end: int, following: str) -> bool:
     """An evidenced API search token is not a bundled file dependency."""
     match = _SQL_API_SEARCH_LINE.fullmatch(line)
@@ -525,6 +544,8 @@ def _candidate_strings(
     line_offset = 0
     in_frontmatter = False
     previous_line_blank = True
+    schema_header_pending = False
+    schema_table_active = False
     source_offset = 0
     for line_number, line in enumerate(StringIO(text), 1):
         if clock() >= deadline:
@@ -591,6 +612,35 @@ def _candidate_strings(
                 in_html = False
                 html_end = None
         cleaned_line = " ".join(line.strip().split())
+        # A schema table needs an exact header followed immediately by its
+        # delimiter. Never extrapolate across prose, fences or a different
+        # table; a malformed row ends the exemption rather than hiding inputs.
+        schema_context = not (
+            line_in_frontmatter or line_in_fence or line_in_html
+            or line_is_indented_code or line_started_in_inline_code
+            or quote_depth or has_list
+        )
+        schema_header = (
+            schema_context and _API_SCHEMA_HEADER.fullmatch(stripped_line) is not None
+        )
+        schema_divider = (
+            schema_context and _API_SCHEMA_DIVIDER.fullmatch(stripped_line) is not None
+        )
+        if schema_header:
+            schema_table_active = False
+            schema_header_pending = True
+        elif schema_header_pending and schema_divider:
+            schema_table_active = True
+            schema_header_pending = False
+        else:
+            schema_header_pending = False
+        schema_field_match = (
+            _API_SCHEMA_FIELD_ROW.fullmatch(stripped_line)
+            if schema_table_active and schema_context and len(stripped_line) <= 1024
+            else None
+        )
+        if not schema_header and not schema_divider and schema_field_match is None:
+            schema_table_active = False
         license_metadata = (
             _FRONTMATTER_APACHE_LICENSE.fullmatch(stripped_line) if line_in_frontmatter else None
         )
@@ -734,6 +784,11 @@ def _candidate_strings(
                                         match.start,
                                         match.end,
                                         text[source_offset : source_offset + 4096],
+                                    )
+                                    or (
+                                        schema_field_match is not None
+                                        and (match.start, match.end)
+                                        == schema_field_match.span("field")
                                     )
                                 )
                             )
