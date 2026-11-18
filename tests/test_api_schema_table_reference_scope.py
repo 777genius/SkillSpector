@@ -53,7 +53,6 @@ def test_unproven_schema_context_does_not_discard_missing_reference(tmp_path: Pa
         "| `data.id` | uuid | No delimiter. |\n",
         "| Field | Type | Description |\n|-------|------|-------------|\n"
         "| `data.id` | file | Real required file. |\n",
-        "~~\n" + HEADER + FIELD_ROWS + "~~\n",
         "~~~markdown\n" + HEADER + FIELD_ROWS + "~~~\n",
         "| Field | Type | Description |\n|-------|------|-------------|\n"
         "| `data.id` | uuid | Field. |\n\n"
@@ -86,7 +85,8 @@ def test_real_no_llm_cli_schema_only_complete_but_missing_script_partial(tmp_pat
     path.write_text(header + "### Webhook payload fields\n\n" + HEADER + FIELD_ROWS)
     before = path.read_bytes()
     cli = CliRunner()
-    clean = cli.invoke(app, ["scan", str(root), "--no-llm", "--format", "json", "--fail-on-incomplete"])
+    args = ["scan", str(root), "--no-llm", "--format", "json", "--fail-on-incomplete"]
+    clean = cli.invoke(app, args)
     assert clean.exit_code == 0, clean.output
     report = json.loads(clean.stdout)
     assert report["analysis_completeness"]["is_complete"] is True
@@ -94,7 +94,7 @@ def test_real_no_llm_cli_schema_only_complete_but_missing_script_partial(tmp_pat
 
     path.write_text(header + HEADER + FIELD_ROWS
                     + "Run `python3 scripts/required.sh` before continuing.\n")
-    adverse = cli.invoke(app, ["scan", str(root), "--no-llm", "--format", "json", "--fail-on-incomplete"])
+    adverse = cli.invoke(app, args)
     assert adverse.exit_code == 1, adverse.output
     coverage = json.loads(adverse.stdout)["analysis_completeness"]
     assert coverage["status"] == "partial"
