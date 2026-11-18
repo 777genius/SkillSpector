@@ -113,8 +113,9 @@ def test_real_webhook_event_type_table_values_are_not_missing_paths(
     # team-telnyx/ai@ee1dee2b5940ea9f370641746f82a3099918bbc4
     # skills/telnyx-whatsapp-java/SKILL.md, original lines 306-312.
     body = (
-        HEADER + "| \x60event_type\x60 | string | \x60whatsapp.template.approved\x60, 
-        "\x60whatsapp.template.rejected\x60, \x60whatsapp.template.disabled\x60 |\n"
+        HEADER
+        + "| \x60event_type\x60 | string | \x60whatsapp.template.approved\x60, "
+        + "\x60whatsapp.template.rejected\x60, \x60whatsapp.template.disabled\x60 |\n"
         + "| \x60payload.status\x60 | string | New template status |\n"
     )
     result = resolve(tmp_path, body)
