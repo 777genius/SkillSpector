@@ -154,7 +154,6 @@ _API_SCHEMA_FIELD_ROW = re.compile(
 )
 
 
-
 # A narrowly documented event-type table can enumerate values in its
 # Description cell. These labels are not bundled files. Never exempt a
 # filename, external command, arbitrary table, or a non-event-type field.
@@ -165,14 +164,56 @@ _API_SCHEMA_EVENT_LIST = re.compile(
     re.IGNORECASE,
 )
 _API_SCHEMA_EVENT_MEMBER = re.compile(rf"\x60(?P<value>{_API_SCHEMA_EVENT_LABEL})\x60", re.IGNORECASE)
-_AMBIGUOUS_FILE_EXTENSIONS = frozenset({
-    "md", "txt", "json", "yaml", "yml", "toml", "py", "sh",
-    "ts", "tsx", "js", "jsx", "sql", "html", "css",
-    "rs", "go", "java", "rb", "php", "c", "h", "cpp", "hpp",
-    "xml", "csv", "pdf", "ipynb", "bat", "ps1", "exe", "lock",
-    "png", "svg", "webp", "jpg", "jpeg", "gif", "zip", "tar",
-    "gz", "pem", "key", "env", "properties", "gradle",
-})
+_AMBIGUOUS_FILE_EXTENSIONS = frozenset(
+    {
+        "md",
+        "txt",
+        "json",
+        "yaml",
+        "yml",
+        "toml",
+        "py",
+        "sh",
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "sql",
+        "html",
+        "css",
+        "rs",
+        "go",
+        "java",
+        "rb",
+        "php",
+        "c",
+        "h",
+        "cpp",
+        "hpp",
+        "xml",
+        "csv",
+        "pdf",
+        "ipynb",
+        "bat",
+        "ps1",
+        "exe",
+        "lock",
+        "png",
+        "svg",
+        "webp",
+        "jpg",
+        "jpeg",
+        "gif",
+        "zip",
+        "tar",
+        "gz",
+        "pem",
+        "key",
+        "env",
+        "properties",
+        "gradle",
+    }
+)
 
 
 def _is_documented_schema_event_value(
@@ -662,9 +703,13 @@ def _candidate_strings(
         # delimiter. Never extrapolate across prose, fences or a different
         # table; a malformed row ends the exemption rather than hiding inputs.
         schema_context = not (
-            line_in_frontmatter or line_in_fence or line_in_html
-            or line_is_indented_code or line_started_in_inline_code
-            or quote_depth or has_list
+            line_in_frontmatter
+            or line_in_fence
+            or line_in_html
+            or line_is_indented_code
+            or line_started_in_inline_code
+            or quote_depth
+            or has_list
         )
         schema_header = (
             schema_context and _API_SCHEMA_HEADER.fullmatch(stripped_line) is not None
@@ -839,8 +884,10 @@ def _candidate_strings(
                                         not in _AMBIGUOUS_FILE_EXTENSIONS
                                     )
                                     or _is_documented_schema_event_value(
-                                        stripped_line, schema_field_match,
-                                        match.start, match.end,
+                                        stripped_line,
+                                        schema_field_match,
+                                        match.start,
+                                        match.end,
                                     )
                                 )
                             )

@@ -22,7 +22,9 @@ FIELD_ROWS = (
 
 def resolve(tmp_path: Path, source: str, known: list[str] | None = None):
     return resolve_bundle_references_with_metadata(
-        tmp_path, source_path="SKILL.md", source_text=source,
+        tmp_path,
+        source_path="SKILL.md",
+        source_text=source,
         known_paths=known or ["SKILL.md"],
     )
 
@@ -91,7 +93,8 @@ def test_unproven_schema_context_does_not_discard_missing_reference(tmp_path: Pa
 def test_table_does_not_hide_independent_link_or_command(tmp_path: Path) -> None:
     result = resolve(
         tmp_path,
-        HEADER + FIELD_ROWS
+        HEADER
+        + FIELD_ROWS
         + "Run `python3 scripts/required.sh` before continuing.\n"
         + "Read [bundle script](scripts/helper.py).\n",
     )
@@ -99,7 +102,6 @@ def test_table_does_not_hide_independent_link_or_command(tmp_path: Path) -> None
     assert any("scripts/required.sh" in value for value in missing)
     assert any("scripts/helper.py" in value for value in missing)
     assert not any("data.payload.status" in value for value in missing)
-
 
 
 def test_real_webhook_event_type_table_values_are_not_missing_paths(tmp_path: Path) -> None:
@@ -133,8 +135,9 @@ def test_event_value_exemption_requires_exact_table_and_no_file_extensions(
         assert result.complete is True
         assert any(row["status"] == "missing" for row in result.records), line
     no_header = resolve(
-        tmp_path, "| \x60event_type\x60 | string | \x60whatsapp.template.approved\x60, "
-        "\x60whatsapp.template.rejected\x60 |\n"
+        tmp_path,
+        "| \x60event_type\x60 | string | \x60whatsapp.template.approved\x60, "
+        "\x60whatsapp.template.rejected\x60 |\n",
     )
     assert any(row["status"] == "missing" for row in no_header.records)
 
@@ -154,8 +157,9 @@ def test_real_no_llm_cli_schema_only_complete_but_missing_script_partial(tmp_pat
     assert report["analysis_completeness"]["is_complete"] is True
     assert path.read_bytes() == before
 
-    path.write_text(header + HEADER + FIELD_ROWS
-                    + "Run `python3 scripts/required.sh` before continuing.\n")
+    path.write_text(
+        header + HEADER + FIELD_ROWS + "Run `python3 scripts/required.sh` before continuing.\n"
+    )
     adverse = cli.invoke(app, args)
     assert adverse.exit_code == 1, adverse.output
     coverage = json.loads(adverse.stdout)["analysis_completeness"]
