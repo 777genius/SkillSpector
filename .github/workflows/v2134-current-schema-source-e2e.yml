@@ -66,6 +66,8 @@ jobs:
         run: |
           set -euo pipefail
           new/.venv/bin/ruff check new/src/skillspector/references.py new/tests/test_api_schema_table_reference_scope.py
+          # On failure, print the precise read-only formatter diff for a targeted correction.
+          new/.venv/bin/ruff format --diff new/src/skillspector/references.py new/tests/test_api_schema_table_reference_scope.py || true
           new/.venv/bin/ruff format --check new/src/skillspector/references.py new/tests/test_api_schema_table_reference_scope.py
           new/.venv/bin/python -m pytest -q new/tests/test_api_schema_table_reference_scope.py
       - name: Real immutable A/B no-LLM evidence and original v3 report proof
