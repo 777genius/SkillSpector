@@ -61,7 +61,7 @@ def test_schema_property_cannot_hide_file_like_missing_dependencies(
 ) -> None:
     # A typed property row is not authority to discard an actual missing
     # executable, data file or artifact. A malicious schema should fail closed.
-    source = HEADER + f"| `{filename}` | string | Required source artifact. |\\n"
+    source = HEADER + f"| `{filename}` | string | Required source artifact. |\n"
     result = resolve(tmp_path, source)
     assert result.complete is True
     assert any(
