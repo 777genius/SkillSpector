@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import copy, hashlib, json, os, subprocess, tempfile
+          import copy, hashlib, json, os, re, subprocess, tempfile
           from pathlib import Path
           root=Path.cwd()
           report_root=root/"original-v3/reports/skillspector/v3"
@@ -126,11 +126,33 @@ jobs:
                   assert isinstance(result["analysis_completeness"]["references"],list)
                   return process.returncode,result
           def stable_findings(report):
+              # Generated IDs are volatile, but their group membership is not.
+              # Never erase them before proving every occurrence is linked to
+              # exactly one complete group, with no cross-group aliasing.
               rows=copy.deepcopy(report["findings"])
+              seen_generated_ids=set()
               for group in rows:
-                  group.pop("finding_ids",None)
-                  for occurrence in group.get("occurrences",[]):
-                      occurrence.pop("finding_id",None)
+                  assert isinstance(group,dict)
+                  ids=group.get("finding_ids")
+                  occurrences=group.get("occurrences")
+                  assert isinstance(ids,list) and isinstance(occurrences,list)
+                  assert type(group.get("raw_count")) is int
+                  assert group["raw_count"]==len(occurrences)
+                  assert len(ids)==len(set(ids))
+                  observed=set()
+                  for finding_id in ids:
+                      assert isinstance(finding_id,str)
+                      assert re.fullmatch(r"finding-[0-9a-f]{32}",finding_id)
+                      assert finding_id not in seen_generated_ids, "cross-group ID reuse"
+                      seen_generated_ids.add(finding_id)
+                  for occurrence in occurrences:
+                      assert isinstance(occurrence,dict)
+                      finding_id=occurrence.get("finding_id")
+                      assert finding_id in ids
+                      observed.add(finding_id)
+                      occurrence.pop("finding_id")
+                  assert observed==set(ids), "unrepresented generated finding ID"
+                  group.pop("finding_ids")
               return sorted(json.dumps(row,sort_keys=True,ensure_ascii=False) for row in rows)
           def normalized_references(report):
               return {json.dumps(r,sort_keys=True,ensure_ascii=False):r
@@ -158,12 +180,31 @@ jobs:
               old_exit,old=run("old",source)
               new_exit,new=run("new",source)
               assert stable_findings(old)==stable_findings(new), "native security group drift"
-              for signed in original["findings"]:
-                  signed_identity=(signed["rule"],signed["severity"],signed["path"],signed["line"])
-                  for candidate in (old,new):
-                      assert any((g.get("rule"),g.get("severity"),g.get("path"),
-                          g.get("line"))==signed_identity for g in candidate["findings"]), (
-                          "original signed security group was lost",signed_identity)
+              signed_groups=stable_findings({"findings":original["findings"]})
+              # The v3 producer is independent evidence. A matching rule and
+              # source line alone do not prove that its risk description,
+              # occurrences, severity, fingerprints or evidence survived.
+              for candidate in (old,new):
+                  assert signed_groups==stable_findings(candidate), (
+                      "original signed security content/occurrence drift",identifier)
+              if count>=2:
+                  # Original Telnyx fax source has two independent HIGH groups.
+                  # Reusing one ID across them must never pass normalization.
+                  forged=copy.deepcopy(original["findings"])
+                  reused=forged[0]["finding_ids"][0]
+                  forged[1]["finding_ids"]=[reused]
+                  for occurrence in forged[1]["occurrences"]:
+                      occurrence["finding_id"]=reused
+                  try:
+                      stable_findings({"findings":forged})
+                  except AssertionError:
+                      pass
+                  else:
+                      raise AssertionError("cross-group finding-ID reuse was hidden")
+                  altered=copy.deepcopy(original["findings"])
+                  altered[0]["message"]="Changed signed security evidence"
+                  assert stable_findings({"findings":altered})!=signed_groups, (
+                      "altered signed security description was hidden")
               left,right=normalized_references(old),normalized_references(new)
               assert set(right).issubset(left), "new/changed reference evidence needs review"
               removed=[left[key] for key in sorted(set(left)-set(right))]
