@@ -168,6 +168,10 @@ _API_SCHEMA_EVENT_MEMBER = re.compile(rf"\x60(?P<value>{_API_SCHEMA_EVENT_LABEL}
 _AMBIGUOUS_FILE_EXTENSIONS = frozenset({
     "md", "txt", "json", "yaml", "yml", "toml", "py", "sh",
     "ts", "tsx", "js", "jsx", "sql", "html", "css",
+    "rs", "go", "java", "rb", "php", "c", "h", "cpp", "hpp",
+    "xml", "csv", "pdf", "ipynb", "bat", "ps1", "exe", "lock",
+    "png", "svg", "webp", "jpg", "jpeg", "gif", "zip", "tar",
+    "gz", "pem", "key", "env", "properties", "gradle",
 })
 
 
@@ -831,6 +835,8 @@ def _candidate_strings(
                                         schema_field_match is not None
                                         and (match.start, match.end)
                                         == schema_field_match.span("field")
+                                        and schema_field_match.group("field").rsplit(".", 1)[-1].lower()
+                                        not in _AMBIGUOUS_FILE_EXTENSIONS
                                     )
                                     or _is_documented_schema_event_value(
                                         stripped_line, schema_field_match,
