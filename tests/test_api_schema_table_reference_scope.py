@@ -35,7 +35,9 @@ def test_documented_api_table_fields_not_bundled_files(tmp_path: Path) -> None:
     assert result.records == []
 
 
-def test_only_missing_property_is_exempt_not_a_real_inventory_file(tmp_path: Path) -> None:
+def test_only_missing_property_is_exempt_not_a_real_inventory_file(
+    tmp_path: Path,
+) -> None:
     result = resolve(tmp_path, HEADER + FIELD_ROWS, ["SKILL.md", "data.id"])
     assert any(
         entry["status"] == "resolved" and entry["target_path"] == "data.id"
@@ -74,7 +76,9 @@ def test_schema_property_cannot_hide_file_like_missing_dependencies(
     )
 
 
-def test_unproven_schema_context_does_not_discard_missing_reference(tmp_path: Path) -> None:
+def test_unproven_schema_context_does_not_discard_missing_reference(
+    tmp_path: Path,
+) -> None:
     invalid = (
         "| File | Type | Description |\n|------|------|-------------|\n"
         "| `data.id` | uuid | Read from file. |\n",
@@ -107,7 +111,9 @@ def test_table_does_not_hide_independent_link_or_command(tmp_path: Path) -> None
     assert not any("data.payload.status" in value for value in missing)
 
 
-def test_real_webhook_event_type_table_values_are_not_missing_paths(tmp_path: Path) -> None:
+def test_real_webhook_event_type_table_values_are_not_missing_paths(
+    tmp_path: Path,
+) -> None:
     # team-telnyx/ai@ee1dee2b5940ea9f370641746f82a3099918bbc4
     # skills/telnyx-whatsapp-java/SKILL.md, original lines 306-312.
     body = (
@@ -145,7 +151,9 @@ def test_event_value_exemption_requires_exact_table_and_no_file_extensions(
     assert any(row["status"] == "missing" for row in no_header.records)
 
 
-def test_real_no_llm_cli_schema_only_complete_but_missing_script_partial(tmp_path: Path) -> None:
+def test_real_no_llm_cli_schema_only_complete_but_missing_script_partial(
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "skill"
     root.mkdir()
     header = "---\nname: webhook-schema\ndescription: Document a webhook schema.\n---\n"
@@ -160,9 +168,9 @@ def test_real_no_llm_cli_schema_only_complete_but_missing_script_partial(tmp_pat
     assert report["analysis_completeness"]["is_complete"] is True
     assert path.read_bytes() == before
 
-    path.write_text(
-        header + HEADER + FIELD_ROWS + "Run `python3 scripts/required.sh` before continuing.\n"
-    )
+    adverse_source = header + HEADER + FIELD_ROWS
+    adverse_source += "Run `python3 scripts/required.sh` before continuing.\n"
+    path.write_text(adverse_source)
     adverse = cli.invoke(app, args)
     assert adverse.exit_code == 1, adverse.output
     coverage = json.loads(adverse.stdout)["analysis_completeness"]
