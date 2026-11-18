@@ -6,6 +6,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from skillspector.cli import app
@@ -45,23 +46,28 @@ def test_only_missing_property_is_exempt_not_a_real_inventory_file(tmp_path: Pat
     )
 
 
-def test_schema_property_cannot_hide_file_like_missing_dependencies(tmp_path: Path) -> None:
-    # A typed property row is not authority to discard an actual missing
-    # executable, data file or artifact. A malicious schema should fail closed.
-    for filename in (
+@pytest.mark.parametrize(
+    "filename",
+    [
         "scripts.required.sh",
         "config.settings.json",
         "scripts.setup.py",
         "data.snapshot.csv",
         "config.release.xml",
-    ):
-        source = HEADER + f"| `{filename}` | string | Required source artifact. |\n"
-        result = resolve(tmp_path, source)
-        assert result.complete is True
-        assert any(
-            row["status"] == "missing" and filename in row["evidence"]
-            for row in result.records
-        ), filename
+    ],
+)
+def test_schema_property_cannot_hide_file_like_missing_dependencies(
+    tmp_path: Path, filename: str
+) -> None:
+    # A typed property row is not authority to discard an actual missing
+    # executable, data file or artifact. A malicious schema should fail closed.
+    source = HEADER + f"| `{filename}` | string | Required source artifact. |\\n"
+    result = resolve(tmp_path, source)
+    assert result.complete is True
+    assert any(
+        row["status"] == "missing" and filename in row["evidence"]
+        for row in result.records
+    )
 
 
 def test_unproven_schema_context_does_not_discard_missing_reference(tmp_path: Path) -> None:
