@@ -77,6 +77,44 @@ def test_table_does_not_hide_independent_link_or_command(tmp_path: Path) -> None
     assert not any("data.payload.status" in value for value in missing)
 
 
+
+def test_real_webhook_event_type_table_values_are_not_missing_paths(tmp_path: Path) -> None:
+    # team-telnyx/ai@ee1dee2b5940ea9f370641746f82a3099918bbc4
+    # skills/telnyx-whatsapp-java/SKILL.md, original lines 306-312.
+    body = (
+        HEADER
+        + "| \x60event_type\x60 | string | \x60whatsapp.template.approved\x60, "
+        "\x60whatsapp.template.rejected\x60, \x60whatsapp.template.disabled\x60 |\n"
+        + "| \x60payload.status\x60 | string | New template status |\n"
+    )
+    result = resolve(tmp_path, body)
+    assert result.complete is True
+    assert result.records == []
+
+
+def test_event_value_exemption_requires_exact_table_and_no_file_extensions(
+    tmp_path: Path,
+) -> None:
+    descriptions = (
+        "| \x60event_type\x60 | string | \x60config.data.json\x60, \x60reports.summary.md\x60 |\n",
+        "| \x60config\x60 | string | \x60whatsapp.template.approved\x60, "
+        "\x60whatsapp.template.rejected\x60 |\n",
+        "| \x60event_type\x60 | file | \x60whatsapp.template.approved\x60, "
+        "\x60whatsapp.template.rejected\x60 |\n",
+        "| \x60event_type\x60 | string | Read \x60whatsapp.template.approved\x60, "
+        "\x60whatsapp.template.rejected\x60 first |\n",
+    )
+    for line in descriptions:
+        result = resolve(tmp_path, HEADER + line)
+        assert result.complete is True
+        assert any(row["status"] == "missing" for row in result.records), line
+    no_header = resolve(
+        tmp_path, "| \x60event_type\x60 | string | \x60whatsapp.template.approved\x60, "
+        "\x60whatsapp.template.rejected\x60 |\n"
+    )
+    assert any(row["status"] == "missing" for row in no_header.records)
+
+
 def test_real_no_llm_cli_schema_only_complete_but_missing_script_partial(tmp_path: Path) -> None:
     root = tmp_path / "skill"
     root.mkdir()

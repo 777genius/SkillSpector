@@ -148,10 +148,52 @@ _API_SCHEMA_DIVIDER = re.compile(
 )
 _API_SCHEMA_FIELD_ROW = re.compile(
     r"^[ \t]*\|[ \t]*\x60(?P<field>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\x60[ \t]*"
-    r"\|[ \t]*(?:string|uuid|integer|number|boolean|date-time|uri|enum:[^|]{1,64})"
-    r"[ \t]*\|[ \t]*[^|\r\n]{1,512}[ \t]*\|[ \t]*$",
+    r"\|[ \t]*(?P<field_type>string|uuid|integer|number|boolean|date-time|uri|enum:[^|]{1,64})"
+    r"[ \t]*\|[ \t]*(?P<description>[^|\r\n]{1,512})[ \t]*\|[ \t]*$",
     re.IGNORECASE,
 )
+
+
+
+# A narrowly documented event-type table can enumerate values in its
+# Description cell. These labels are not bundled files. Never exempt a
+# filename, external command, arbitrary table, or a non-event-type field.
+_API_SCHEMA_EVENT_LABEL = r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,}"
+_API_SCHEMA_EVENT_LIST = re.compile(
+    rf"[ \t]*\x60{_API_SCHEMA_EVENT_LABEL}\x60"
+    rf"(?:[ \t]*,[ \t]*\x60{_API_SCHEMA_EVENT_LABEL}\x60){{1,8}}[ \t]*",
+    re.IGNORECASE,
+)
+_API_SCHEMA_EVENT_MEMBER = re.compile(rf"\x60(?P<value>{_API_SCHEMA_EVENT_LABEL})\x60", re.IGNORECASE)
+_AMBIGUOUS_FILE_EXTENSIONS = frozenset({
+    "md", "txt", "json", "yaml", "yml", "toml", "py", "sh",
+    "ts", "tsx", "js", "jsx", "sql", "html", "css",
+})
+
+
+def _is_documented_schema_event_value(
+    row: str, schema: re.Match[str] | None, start: int, end: int
+) -> bool:
+    if (
+        schema is None
+        or schema.group("field").lower() not in {"event_type", "data.event_type"}
+        or schema.group("field_type").strip().lower() != "string"
+    ):
+        return False
+    description = schema.group("description")
+    if _API_SCHEMA_EVENT_LIST.fullmatch(description) is None:
+        return False
+    members = list(_API_SCHEMA_EVENT_MEMBER.finditer(description))
+    if any(
+        match.group("value").rsplit(".", 1)[-1].lower() in _AMBIGUOUS_FILE_EXTENSIONS
+        for match in members
+    ):
+        return False
+    offset = schema.start("description")
+    return any(
+        (start, end) == (offset + match.start("value"), offset + match.end("value"))
+        for match in members
+    )
 
 
 def _is_documented_sql_api_lookup(line: str, start: int, end: int, following: str) -> bool:
@@ -789,6 +831,10 @@ def _candidate_strings(
                                         schema_field_match is not None
                                         and (match.start, match.end)
                                         == schema_field_match.span("field")
+                                    )
+                                    or _is_documented_schema_event_value(
+                                        stripped_line, schema_field_match,
+                                        match.start, match.end,
                                     )
                                 )
                             )
