@@ -53,8 +53,11 @@ def test_only_missing_property_is_exempt_not_a_real_inventory_file(tmp_path: Pat
         "scripts.required.sh",
         "config.settings.json",
         "scripts.setup.py",
+        "scripts.executor.ps1",
         "data.snapshot.csv",
         "config.release.xml",
+        "assets.package.lock",
+        "images.preview.webp",
     ],
 )
 def test_schema_property_cannot_hide_file_like_missing_dependencies(
