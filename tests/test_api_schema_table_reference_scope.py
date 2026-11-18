@@ -7,10 +7,9 @@ import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
-
 from skillspector.cli import app
 from skillspector.references import resolve_bundle_references_with_metadata
+from typer.testing import CliRunner
 
 
 HEADER = "| Field | Type | Description |\n|-------|------|-------------|\n"
