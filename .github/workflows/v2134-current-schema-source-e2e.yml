@@ -44,6 +44,7 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             reports/skillspector/v3/index.json
+            reports/skillspector/v3/shards/964ef65af829cde2b1edd041aa01ee5bb55f28e656df493a75ccac8b05da49d8.json
             reports/skillspector/v3/shards/a6bab5269903b25d2071a2be174e899dba8ec7779b5bba25f12773b4ac1fd5fa.json
           persist-credentials: false
           path: original-v3
@@ -85,20 +86,32 @@ jobs:
           assert index["source_commit"]=="fe701bc437d2e9bd6ae681edef9e90df833aedd8"
           assert index["scanner"]=={"id":"skillspector","version":"2.13.1",
               "revision":"f3b25697d76256998ca9d42c198d256258d4c035"}
-          descriptor=next(d for d in index["shards"] if d["path"]==
-              "shards/a6bab5269903b25d2071a2be174e899dba8ec7779b5bba25f12773b4ac1fd5fa.json")
-          raw=(report_root/descriptor["path"]).read_bytes()
-          assert descriptor["repository"]=="team-telnyx/ai"
-          assert len(raw)==descriptor["bytes"]==558032
-          assert "sha256:"+hashlib.sha256(raw).hexdigest()==descriptor["digest"]
-          # This upstream repository is split across two immutable v3 shards.
-          # Both named source records are in its 25-record second shard, not
-          # the 213-record first shard. Never silently skip missing IDs.
+          # Registry partitions one source repository across more than one
+          # immutable shard. Both cases must be present and their original
+          # independent security groups must survive the native A/B scan.
+          manifest={
+              "shards/964ef65af829cde2b1edd041aa01ee5bb55f28e656df493a75ccac8b05da49d8.json":(8380263,213),
+              "shards/a6bab5269903b25d2071a2be174e899dba8ec7779b5bba25f12773b4ac1fd5fa.json":(558032,25),
+          }
           repository_shards=[d for d in index["shards"] if d["repository"]=="team-telnyx/ai"]
-          assert len(repository_shards)==2
-          assert sorted(d["record_count"] for d in repository_shards)==[25,213]
-          shard=json.loads(raw)
-          assert len(shard["records"])==descriptor["record_count"]==25
+          assert len(repository_shards)==len(manifest)
+          assert {d["path"] for d in repository_shards}==set(manifest)
+          published_records=[]
+          verified_shards={}
+          for descriptor in repository_shards:
+              expected_bytes,expected_records=manifest[descriptor["path"]]
+              raw=(report_root/descriptor["path"]).read_bytes()
+              assert len(raw)==descriptor["bytes"]==expected_bytes
+              digest="sha256:"+hashlib.sha256(raw).hexdigest()
+              assert descriptor["digest"]==digest
+              shard=json.loads(raw)
+              assert shard["repository"]=="team-telnyx/ai"
+              assert len(shard["records"])==descriptor["record_count"]==expected_records
+              published_records.extend(shard["records"])
+              verified_shards[descriptor["path"]]=digest
+          assert len(published_records)==238
+          ids=[row["id"] for row in published_records]
+          assert len(ids)==len(set(ids)), "duplicate published ID across shards"
 
           domain=b"agentplugins.package-tree\x00sha256\x00v1"
           def source_tree_digest(path):
@@ -173,7 +186,7 @@ jobs:
           ]
           outcomes=[]
           for path,identifier,digest,count in cases:
-              matches=[row for row in shard["records"] if row["id"]==identifier]
+              matches=[row for row in published_records if row["id"]==identifier]
               assert len(matches)==1, ("missing or duplicated immutable published ID",identifier)
               original=matches[0]
               assert original["status"]=="partial" and original["freshness"]=="current"
@@ -243,7 +256,7 @@ jobs:
           proof={"schema_version":1,"kind":"v2134-current-source-api-schema-readonly",
               "published_ref":"d0185d28f4585541c878219154305e60cb5abf83",
               "published_index_sha256":hashlib.sha256((report_root/"index.json").read_bytes()).hexdigest(),
-              "published_shard_sha256":hashlib.sha256(raw).hexdigest(),
+              "published_shards_sha256":verified_shards,
               "original_source_revision":"ee1dee2b5940ea9f370641746f82a3099918bbc4",
               "scanner_old":"0cdf5fe45695ad15cf0250d1ada892697e6cb79b",
               "candidate_scanner":subprocess.check_output(["git","-C","new","rev-parse","HEAD"],text=True).strip(),
