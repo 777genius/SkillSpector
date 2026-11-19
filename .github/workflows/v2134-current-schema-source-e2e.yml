@@ -44,7 +44,7 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             reports/skillspector/v3/index.json
-            reports/skillspector/v3/shards/964ef65af829cde2b1edd041aa01ee5bb55f28e656df493a75ccac8b05da49d8.json
+            reports/skillspector/v3/shards/a6bab5269903b25d2071a2be174e899dba8ec7779b5bba25f12773b4ac1fd5fa.json
           persist-credentials: false
           path: original-v3
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
@@ -86,13 +86,19 @@ jobs:
           assert index["scanner"]=={"id":"skillspector","version":"2.13.1",
               "revision":"f3b25697d76256998ca9d42c198d256258d4c035"}
           descriptor=next(d for d in index["shards"] if d["path"]==
-              "shards/964ef65af829cde2b1edd041aa01ee5bb55f28e656df493a75ccac8b05da49d8.json")
+              "shards/a6bab5269903b25d2071a2be174e899dba8ec7779b5bba25f12773b4ac1fd5fa.json")
           raw=(report_root/descriptor["path"]).read_bytes()
           assert descriptor["repository"]=="team-telnyx/ai"
-          assert len(raw)==descriptor["bytes"]==8380263
+          assert len(raw)==descriptor["bytes"]==558032
           assert "sha256:"+hashlib.sha256(raw).hexdigest()==descriptor["digest"]
+          # This upstream repository is split across two immutable v3 shards.
+          # Both named source records are in its 25-record second shard, not
+          # the 213-record first shard. Never silently skip missing IDs.
+          repository_shards=[d for d in index["shards"] if d["repository"]=="team-telnyx/ai"]
+          assert len(repository_shards)==2
+          assert sorted(d["record_count"] for d in repository_shards)==[25,213]
           shard=json.loads(raw)
-          assert len(shard["records"])==descriptor["record_count"]==213
+          assert len(shard["records"])==descriptor["record_count"]==25
 
           domain=b"agentplugins.package-tree\x00sha256\x00v1"
           def source_tree_digest(path):
@@ -167,7 +173,9 @@ jobs:
           ]
           outcomes=[]
           for path,identifier,digest,count in cases:
-              original=next(row for row in shard["records"] if row["id"]==identifier)
+              matches=[row for row in shard["records"] if row["id"]==identifier]
+              assert len(matches)==1, ("missing or duplicated immutable published ID",identifier)
+              original=matches[0]
               assert original["status"]=="partial" and original["freshness"]=="current"
               assert original["source"]=={"repository":"team-telnyx/ai",
                   "revision":"ee1dee2b5940ea9f370641746f82a3099918bbc4",
