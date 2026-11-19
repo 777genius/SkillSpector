@@ -141,15 +141,88 @@ jobs:
                       cwd=root,capture_output=True,text=True,env=env,timeout=240)
                   assert process.returncode in (0,1), process.stderr[-2000:]
                   result=json.loads(process.stdout)
-                  assert isinstance(result["findings"],list)
+                  # Native JSON CLI output uses "issues"; signed Registry v3
+                  # has a distinct grouped "findings" schema. Fail closed on
+                  # missing security evidence rather than defaulting to [].
+                  assert isinstance(result,dict) and isinstance(result["issues"],list), (
+                      "unexpected native CLI security schema",sorted(result))
                   assert isinstance(result["analysis_completeness"]["references"],list)
                   return process.returncode,result
+          def normalize_location(raw):
+              # Canonical native-to-v3 location projection retains every
+              # coordinate and source-provenance field, without lossy defaults.
+              assert isinstance(raw,dict) and isinstance(raw.get("file"),str)
+              assert raw["file"] and not raw["file"].startswith("/")
+              allowed={"file","start_line","end_line","start_column","end_column",
+                  "source_identity","source_digest","source_url","transitive_depth"}
+              assert not(set(raw)-allowed),("unknown occurrence fields",sorted(raw))
+              out={"path":raw["file"]}
+              for src,dst in (("start_line","line"),("end_line","end_line"),
+                      ("start_column","start_column"),("end_column","end_column")):
+                  if raw.get(src) is not None:
+                      assert type(raw[src]) is int and raw[src]>=(
+                          0 if src.endswith("column") else 1)
+                      out[dst]=raw[src]
+              for key in ("source_identity","source_digest","source_url","transitive_depth"):
+                  if key in raw:out[key]=raw[key]
+              return out
           def stable_findings(report):
-              # Generated IDs are volatile, but their group membership is not.
-              # Never erase them before proving every occurrence is linked to
-              # exactly one complete group, with no cross-group aliasing.
+              # Preserve native issue contents, independent groups, and
+              # occurrences when comparing against signed v3 evidence. No
+              # issue or group is silently omitted, even on schema changes.
+              if "issues" in report:
+                  issues=copy.deepcopy(report["issues"])
+                  assert isinstance(issues,list) and len(issues)<=10000
+                  result={}
+                  seen_ids=set()
+                  permitted={"id","finding_id","category","pattern","severity",
+                      "confidence","location","finding","explanation","remediation",
+                      "code_snippet","intent","tags","evidence","match_fingerprint",
+                      "occurrences","context","source_identity","source_digest",
+                      "source_url","transitive_depth"}
+                  group_fields=("category","pattern","finding","remediation",
+                      "code_snippet","intent","tags","context","source_identity",
+                      "source_digest","source_url","transitive_depth")
+                  for issue in issues:
+                      assert isinstance(issue,dict) and not(set(issue)-permitted), (
+                          "unexpected CLI finding evidence",sorted(issue))
+                      fid=issue["finding_id"]
+                      assert isinstance(fid,str) and re.fullmatch(r"finding-[0-9a-f]{32}",fid)
+                      assert fid not in seen_ids,"cross-issue finding-ID reuse"
+                      seen_ids.add(fid)
+                      assert isinstance(issue["evidence"],dict)
+                      assert isinstance(issue["location"],dict)
+                      assert isinstance(issue["occurrences"],list)
+                      assert issue["occurrences"],"native finding lost all occurrences"
+                      locations=[normalize_location(x) for x in issue["occurrences"]]
+                      location=normalize_location(issue["location"])
+                      assert location in locations,"native location not represented"
+                      meta={"rule":issue["id"],"severity":issue["severity"],
+                          "message":issue.get("explanation") or issue.get("finding"),
+                          "evidence":issue["evidence"],"confidence":issue["confidence"],
+                          "match_fingerprint":issue.get("match_fingerprint"),
+                          "review_status":"unreviewed"}
+                      meta.update({key:issue[key] for key in group_fields if key in issue})
+                      identity={"meta":meta}
+                      if not meta["match_fingerprint"]:
+                          identity["locations"]=locations
+                      key=json.dumps(identity,sort_keys=True,ensure_ascii=False)
+                      if key not in result:
+                          result[key]={**meta,**location,"occurrences":[],"raw_count":0}
+                      group=result[key]
+                      group["raw_count"]+=len(locations)
+                      for pos in locations:
+                          if pos not in group["occurrences"]:group["occurrences"].append(pos)
+                  return sorted(json.dumps({**group,
+                      "occurrences":sorted(group["occurrences"],
+                          key=lambda x:json.dumps(x,sort_keys=True))},
+                      sort_keys=True,ensure_ascii=False) for group in result.values())
+              # The signed v3 groups are independently grouped. Validate all
+              # generated IDs and group memberships *before* normalizing them.
+              assert "findings" in report and isinstance(report["findings"],list)
               rows=copy.deepcopy(report["findings"])
               seen_generated_ids=set()
+              normalized=[]
               for group in rows:
                   assert isinstance(group,dict)
                   ids=group.get("finding_ids")
@@ -162,17 +235,23 @@ jobs:
                   for finding_id in ids:
                       assert isinstance(finding_id,str)
                       assert re.fullmatch(r"finding-[0-9a-f]{32}",finding_id)
-                      assert finding_id not in seen_generated_ids, "cross-group ID reuse"
+                      assert finding_id not in seen_generated_ids,"cross-group ID reuse"
                       seen_generated_ids.add(finding_id)
                   for occurrence in occurrences:
                       assert isinstance(occurrence,dict)
-                      finding_id=occurrence.get("finding_id")
+                      finding_id=occurrence.pop("finding_id",None)
                       assert finding_id in ids
                       observed.add(finding_id)
-                      occurrence.pop("finding_id")
-                  assert observed==set(ids), "unrepresented generated finding ID"
+                  assert observed==set(ids),"unrepresented generated finding ID"
+                  assert isinstance(group.get("id"),str) and group["id"].startswith("sha256:")
+                  assert group.get("review_status")=="unreviewed","exception group needs separate proof"
+                  assert "exception" not in group,"cannot silently accept a group exception"
+                  group.pop("id")
                   group.pop("finding_ids")
-              return sorted(json.dumps(row,sort_keys=True,ensure_ascii=False) for row in rows)
+                  group["occurrences"]=sorted(occurrences,
+                      key=lambda x:json.dumps(x,sort_keys=True))
+                  normalized.append(json.dumps(group,sort_keys=True,ensure_ascii=False))
+              return sorted(normalized)
           def normalized_references(report):
               return {json.dumps(r,sort_keys=True,ensure_ascii=False):r
                   for r in report["analysis_completeness"]["references"]}
