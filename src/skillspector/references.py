@@ -89,6 +89,20 @@ _INLINE_CODE_COMMAND_PATH = re.compile(
     r"pwsh|powershell)\b[ \t]+"
     r"((?:\./)?(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+)(?![\w/.-])"
 )
+# A documented Durable Objects API search is not automatically a file load.
+# Scope to the corroborated SQL method; inventory and other uses stay visible.
+_SQL_API_SEARCH_LINE = re.compile(
+    r"^[ \t]*Search:[ \t]*\`[A-Za-z_]\w*\`(?:[ \t]*,[ \t]*\`[A-Za-z_]\w*\`){2,}"
+    r"[ \t]*,[ \t]*\`(?P<method>sql\.exec)\`[ \t]*$"
+)
+# A prose claim is insufficient: corroborate inside an actual TS/JS fence.
+_SQL_API_CALL = re.compile(
+    r"(?m)^[ \t]*```(?:typescript|ts|javascript|js)[ \t]*\r?\n"
+    r"(?:(?!^[ \t]*```)[\s\S]){0,3072}?"
+    r"^[ \t]*(?!//|/\*|\*|#)(?:(?:const|let|var|return|await)\b[^\"\'`\r\n]{0,256}?)?"
+    r"\bthis\.ctx\.storage\.sql\.exec\s*(?:<[^>\n]{1,96}>)?\s*\("
+)
+
 _DOTTED_IDENTIFIER = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+", re.ASCII)
 _DATA_FIELD_PREFIX = re.compile(
     r"(?:(?:Use|Inspect|Read|Check)[ \t\r\n]+)?(?:the[ \t\r\n]+|a[ \t\r\n]+)?"
@@ -119,6 +133,124 @@ _DATA_FIELD_FILE_CONTEXT = re.compile(
     r"curl|wget|chmod|cp|mv|rm)\b|[$|&<>\\]",
     re.IGNORECASE,
 )
+
+
+# Markdown schema rows explicitly document object properties, not bundle paths.
+# A full Field / Type / Description table and typed row must be present.
+# This exemption is only consulted for missing targets: existing inventory,
+# ambiguity, executable paths and independent Markdown links remain visible.
+_API_SCHEMA_HEADER = re.compile(
+    r"^[ \t]*\|[ \t]*Field[ \t]*\|[ \t]*Type[ \t]*\|[ \t]*Description[ \t]*\|[ \t]*$",
+    re.IGNORECASE,
+)
+_API_SCHEMA_DIVIDER = re.compile(
+    r"^[ \t]*\|[ \t]*:?-{3,}:?[ \t]*\|[ \t]*:?-{3,}:?[ \t]*\|[ \t]*:?-{3,}:?[ \t]*\|[ \t]*$"
+)
+_API_SCHEMA_FIELD_ROW = re.compile(
+    r"^[ \t]*\|[ \t]*\x60(?P<field>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\x60[ \t]*"
+    r"\|[ \t]*(?P<field_type>string|uuid|integer|number|boolean|date-time|uri|enum:[^|]{1,64})"
+    r"[ \t]*\|[ \t]*(?P<description>[^|\r\n]{1,512})[ \t]*\|[ \t]*$",
+    re.IGNORECASE,
+)
+
+
+# A narrowly documented event-type table can enumerate values in its
+# Description cell. These labels are not bundled files. Never exempt a
+# filename, external command, arbitrary table, or a non-event-type field.
+_API_SCHEMA_EVENT_LABEL = r"[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){2,}"
+_API_SCHEMA_EVENT_LIST = re.compile(
+    rf"[ \t]*\x60{_API_SCHEMA_EVENT_LABEL}\x60"
+    rf"(?:[ \t]*,[ \t]*\x60{_API_SCHEMA_EVENT_LABEL}\x60){{1,8}}[ \t]*",
+    re.IGNORECASE,
+)
+_API_SCHEMA_EVENT_MEMBER = re.compile(
+    rf"\x60(?P<value>{_API_SCHEMA_EVENT_LABEL})\x60", re.IGNORECASE
+)
+_AMBIGUOUS_FILE_EXTENSIONS = frozenset(
+    {
+        "md",
+        "txt",
+        "json",
+        "yaml",
+        "yml",
+        "toml",
+        "py",
+        "sh",
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "sql",
+        "html",
+        "css",
+        "rs",
+        "go",
+        "java",
+        "rb",
+        "php",
+        "c",
+        "h",
+        "cpp",
+        "hpp",
+        "xml",
+        "csv",
+        "pdf",
+        "ipynb",
+        "bat",
+        "ps1",
+        "exe",
+        "lock",
+        "png",
+        "svg",
+        "webp",
+        "jpg",
+        "jpeg",
+        "gif",
+        "zip",
+        "tar",
+        "gz",
+        "pem",
+        "key",
+        "env",
+        "properties",
+        "gradle",
+    }
+)
+
+
+def _is_documented_schema_event_value(
+    row: str, schema: re.Match[str] | None, start: int, end: int
+) -> bool:
+    if (
+        schema is None
+        or schema.group("field").lower() not in {"event_type", "data.event_type"}
+        or schema.group("field_type").strip().lower() != "string"
+    ):
+        return False
+    description = schema.group("description")
+    if _API_SCHEMA_EVENT_LIST.fullmatch(description) is None:
+        return False
+    members = list(_API_SCHEMA_EVENT_MEMBER.finditer(description))
+    if any(
+        match.group("value").rsplit(".", 1)[-1].lower() in _AMBIGUOUS_FILE_EXTENSIONS
+        for match in members
+    ):
+        return False
+    offset = schema.start("description")
+    return any(
+        (start, end) == (offset + match.start("value"), offset + match.end("value"))
+        for match in members
+    )
+
+
+def _is_documented_sql_api_lookup(line: str, start: int, end: int, following: str) -> bool:
+    """An evidenced API search token is not a bundled file dependency."""
+    match = _SQL_API_SEARCH_LINE.fullmatch(line)
+    return (
+        match is not None
+        and (start, end) == match.span("method")
+        and _SQL_API_CALL.search(following[:4096]) is not None
+    )
 
 
 def _is_documented_data_field(text: str, start: int, end: int) -> bool:
@@ -563,6 +695,8 @@ def _candidate_strings(
     line_offset = 0
     in_frontmatter = False
     previous_line_blank = True
+    schema_header_pending = False
+    schema_table_active = False
     source_offset = 0
     for line_number, line in enumerate(StringIO(text), 1):
         if clock() >= deadline:
@@ -629,6 +763,35 @@ def _candidate_strings(
                 in_html = False
                 html_end = None
         cleaned_line = " ".join(line.strip().split())
+        # A schema table needs an exact header followed immediately by its
+        # delimiter. Never extrapolate across prose, fences or a different
+        # table; a malformed row ends the exemption rather than hiding inputs.
+        schema_context = not (
+            line_in_frontmatter
+            or line_in_fence
+            or line_in_html
+            or line_is_indented_code
+            or line_started_in_inline_code
+            or quote_depth
+            or has_list
+        )
+        schema_header = schema_context and _API_SCHEMA_HEADER.fullmatch(stripped_line) is not None
+        schema_divider = schema_context and _API_SCHEMA_DIVIDER.fullmatch(stripped_line) is not None
+        if schema_header:
+            schema_table_active = False
+            schema_header_pending = True
+        elif schema_header_pending and schema_divider:
+            schema_table_active = True
+            schema_header_pending = False
+        else:
+            schema_header_pending = False
+        schema_field_match = (
+            _API_SCHEMA_FIELD_ROW.fullmatch(stripped_line)
+            if schema_table_active and schema_context and len(stripped_line) <= 1024
+            else None
+        )
+        if not schema_header and not schema_divider and schema_field_match is None:
+            schema_table_active = False
         license_metadata = (
             _FRONTMATTER_APACHE_LICENSE.fullmatch(stripped_line) if line_in_frontmatter else None
         )
@@ -769,6 +932,27 @@ def _candidate_strings(
                                     )
                                     or _is_generated_report_output(
                                         text, line_offset + match.start, line_offset + match.end
+                                    )
+                                    or _is_documented_sql_api_lookup(
+                                        stripped_line,
+                                        match.start,
+                                        match.end,
+                                        text[source_offset : source_offset + 4096],
+                                    )
+                                    or (
+                                        schema_field_match is not None
+                                        and (match.start, match.end)
+                                        == schema_field_match.span("field")
+                                        and schema_field_match.group("field")
+                                        .rsplit(".", 1)[-1]
+                                        .lower()
+                                        not in _AMBIGUOUS_FILE_EXTENSIONS
+                                    )
+                                    or _is_documented_schema_event_value(
+                                        stripped_line,
+                                        schema_field_match,
+                                        match.start,
+                                        match.end,
                                     )
                                 )
                             )
