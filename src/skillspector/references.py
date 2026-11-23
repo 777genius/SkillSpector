@@ -390,7 +390,7 @@ _GENERATED_REPORT_FILE = re.compile(
     re.IGNORECASE,
 )
 _GENERATED_REPORT_STEP = re.compile(
-    r"^#{1,6}[ \t]+Step[ \t]+[0-9]+[ \t]*-[ \t]*Write[ \t]+report[ \t]*$",
+    r"^ {0,3}#{1,6}[ \t]+Step[ \t]+[0-9]+[ \t]*-[ \t]*Write[ \t]+report[ \t]*$",
     re.IGNORECASE,
 )
 _GENERATED_REPORT_SAVE = re.compile(
@@ -400,7 +400,9 @@ _GENERATED_REPORT_SAVE = re.compile(
 )
 
 
-def _is_generated_report_output(text: str, start: int, end: int) -> bool:
+def _is_generated_report_output(
+    text: str, start: int, end: int, *, previous_report_heading: int | None
+) -> bool:
     """Only explicit output Markdown names, never inputs or files on disk."""
     if start < 1 or end >= len(text) or end - start > 131:
         return False
@@ -426,14 +428,9 @@ def _is_generated_report_output(text: str, start: int, end: int) -> bool:
         return True
     if not exact_name(_GENERATED_REPORT_FILE.fullmatch(line)):
         return False
-    # File-name-only clauses are ambiguous without a nearby explicit write
-    # step. Do not let an unrelated "Required files" section qualify.
-    prefix = text[max(0, line_start - 384) : line_start]
-    heading = next(
-        (row.strip() for row in reversed(prefix.splitlines()) if row.lstrip().startswith("#")),
-        "",
-    )
-    return _GENERATED_REPORT_STEP.fullmatch(heading) is not None
+    # The tokenizer binds visibility to the nearest nonempty physical line.
+    # Require its full start inside the bounded window, never a clipped suffix.
+    return previous_report_heading is not None and 0 < line_start - previous_report_heading <= 384
 
 
 def _evidence(cleaned_line: str, column: int) -> str:
@@ -695,6 +692,7 @@ def _candidate_strings(
     line_offset = 0
     in_frontmatter = False
     previous_line_blank = True
+    previous_report_heading: int | None = None
     schema_header_pending = False
     schema_table_active = False
     source_offset = 0
@@ -931,7 +929,10 @@ def _candidate_strings(
                                         text, line_offset + match.start, line_offset + match.end
                                     )
                                     or _is_generated_report_output(
-                                        text, line_offset + match.start, line_offset + match.end
+                                        text,
+                                        line_offset + match.start,
+                                        line_offset + match.end,
+                                        previous_report_heading=previous_report_heading,
                                     )
                                     or _is_documented_sql_api_lookup(
                                         stripped_line,
@@ -978,6 +979,14 @@ def _candidate_strings(
             )
         if closes_fence:
             active_fence = None
+        # Reuse the full visibility context before advancing to the next line.
+        # A later blank line cannot make an earlier HTML/code heading visible.
+        if stripped_line.strip(" \t"):
+            previous_report_heading = None
+            if schema_context and _GENERATED_REPORT_STEP.fullmatch(
+                line.removesuffix("\n").removesuffix("\r")
+            ):
+                previous_report_heading = line_offset
         line_offset += len(line)
         previous_line_blank = not stripped_line.strip()
     return candidates, tuple(sorted(limitations))

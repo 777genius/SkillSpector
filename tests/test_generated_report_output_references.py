@@ -25,6 +25,10 @@ def resolve(root: Path, body: str, known: list[str] | None = None):
     [
         "### Step 10\n\n5. Write `authz-coverage-report.md` to the working directory.\n",
         "### Step 5 - Write report\n\nFile `cache-effectiveness-report.md` in current working directory:\n",
+        "### Step 5 - Write report\r\n \t\n"
+        "File `cache-effectiveness-report.md` in current working directory:\n",
+        "<div>\nExample only.\n\n### Step 5 - Write report\n\n"
+        "File `cache-effectiveness-report.md` in current working directory:\n",
         "### Step 5 - Write report\n\nReport structure (Markdown), file "
         "`spec-check-report.md` in the current working directory:\n",
         "- `/stackcompass save` - after analysis, save report to `stackcompass-report.md`\n",
@@ -80,6 +84,59 @@ def test_independent_input_not_suppressed_by_output_in_same_source(tmp_path: Pat
         row["status"] == "missing" and "source-config.md" in row["evidence"]
         for row in result.records
     )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "```text\n### Step 5 - Write report\n```\n\n"
+        "File `config.md` in current working directory:\n",
+        "<!--\n### Step 5 - Write report\n-->\n\n"
+        "File `config.md` in current working directory:\n",
+        "    ### Step 5 - Write report\n\nFile `config.md` in current working directory:\n",
+        "\t### Step 5 - Write report\n\nFile `config.md` in current working directory:\n",
+        "### Step 5 - Write report\n\nRequired input must already exist.\n"
+        "File `config.md` in current working directory:\n",
+        "Required input\u2028### Step 5 - Write report\n\n"
+        "File `config.md` in current working directory:\n",
+        "Required input\u0085### Step 5 - Write report\n\n"
+        "File `config.md` in current working directory:\n",
+        "Required input\v### Step 5 - Write report\n\n"
+        "File `config.md` in current working directory:\n",
+        "<div>\n### Step 5 - Write report\n\n"
+        "File `config.md` in current working directory:\n",
+    ],
+)
+def test_file_clause_does_not_inherit_hidden_or_interrupted_heading(
+    tmp_path: Path, body: str
+) -> None:
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert any(
+        row["status"] == "missing" and "config.md" in row["evidence"] for row in result.records
+    )
+
+
+@pytest.mark.parametrize("prefix", ["    ", "Required input: "])
+def test_file_clause_rejects_window_clipped_heading(tmp_path: Path, prefix: str) -> None:
+    heading = "### Step 5 - Write report"
+    body = prefix + heading + "\n"
+    body += "\n" * (384 - len(heading) - 1)
+    body += "File `config.md` in current working directory:\n"
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert any(
+        row["status"] == "missing" and "config.md" in row["evidence"] for row in result.records
+    )
+
+
+@pytest.mark.parametrize("indent", [" ", "  ", "   "])
+def test_file_clause_accepts_markdown_heading_indentation(tmp_path: Path, indent: str) -> None:
+    body = indent + "### Step 5 - Write report\n\n"
+    body += "File `config.md` in current working directory:\n"
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert not [row for row in result.records if row["status"] == "missing"]
 
 
 def test_leading_bom_exemption_preserves_embedded_zero_width() -> None:
