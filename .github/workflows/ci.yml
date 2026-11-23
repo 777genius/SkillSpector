@@ -122,7 +122,8 @@ jobs:
           path: |
             .skillspector-docker-smoke.json
             .skillspector-docker-github-smoke.json
-          if-no-files-found: ignore
+          include-hidden-files: true
+          if-no-files-found: error
 
   dco:
     name: DCO Check
