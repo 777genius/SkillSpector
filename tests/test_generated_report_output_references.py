@@ -1,0 +1,156 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Generated Markdown outputs are not required bundled inputs."""
+
+from pathlib import Path
+
+import pytest
+
+from skillspector.references import resolve_bundle_references_with_metadata
+
+
+def resolve(root: Path, body: str, known: list[str] | None = None):
+    (root / "SKILL.md").write_text(body, encoding="utf-8")
+    return resolve_bundle_references_with_metadata(
+        root,
+        source_path="SKILL.md",
+        source_text=body,
+        known_paths=known or ["SKILL.md"],
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "### Step 10\n\n5. Write `authz-coverage-report.md` to the working directory.\n",
+        "### Step 5 - Write report\n\nFile `cache-effectiveness-report.md` in current working directory:\n",
+        "### Step 5 - Write report\r\n \t\n"
+        "File `cache-effectiveness-report.md` in current working directory:\n",
+        "<div>\nExample only.\n\n### Step 5 - Write report\n\n"
+        "File `cache-effectiveness-report.md` in current working directory:\n",
+        "### Step 5 - Write report\n\nReport structure (Markdown), file "
+        "`spec-check-report.md` in the current working directory:\n",
+        "- `/stackcompass save` - after analysis, save report to `stackcompass-report.md`\n",
+    ],
+)
+def test_explicit_generated_report_has_no_missing_file(tmp_path: Path, body: str) -> None:
+    result = resolve(tmp_path, body)
+    assert result.complete is True
+    assert not [item for item in result.records if item["status"] == "missing"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "### Required files\n\nFile `config.md` in current working directory:\n",
+        "### Step 5 - Read report\n\nFile `config.md` in current working directory:\n",
+        "### Step 5 - Write report\n\nRead `config.md` from working directory.\n",
+        "5. Write `run.sh` to the working directory.\n",
+        "5. Write `scripts/report.md` to the working directory.\n",
+        "5. Write `config.md` to the build directory.\n",
+        "Do not save report to `secret.md`.\n",
+        "Run `bash scripts/required.sh` before continuing.\n",
+    ],
+)
+def test_unqualified_input_or_executable_stays_missing(tmp_path: Path, body: str) -> None:
+    result = resolve(tmp_path, body)
+    assert result.complete is True
+    assert any(item["status"] == "missing" for item in result.records), result.records
+
+
+def test_present_report_file_wins_over_output_metadata(tmp_path: Path) -> None:
+    (tmp_path / "authz-coverage-report.md").write_text("# Existing file\n", encoding="utf-8")
+    result = resolve(
+        tmp_path,
+        "5. Write `authz-coverage-report.md` to the working directory.\n",
+        ["SKILL.md", "authz-coverage-report.md"],
+    )
+    assert result.complete
+    assert any(
+        row["status"] == "resolved" and row["target_path"] == "authz-coverage-report.md"
+        for row in result.records
+    )
+
+
+def test_independent_input_not_suppressed_by_output_in_same_source(tmp_path: Path) -> None:
+    body = (
+        "5. Write `summary-report.md` to the working directory.\n"
+        "Read `source-config.md` before producing the report.\n"
+    )
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert any(
+        row["status"] == "missing" and "source-config.md" in row["evidence"]
+        for row in result.records
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "```text\n### Step 5 - Write report\n```\n\n"
+        "File `config.md` in current working directory:\n",
+        "<!--\n### Step 5 - Write report\n-->\n\n"
+        "File `config.md` in current working directory:\n",
+        "    ### Step 5 - Write report\n\nFile `config.md` in current working directory:\n",
+        "\t### Step 5 - Write report\n\nFile `config.md` in current working directory:\n",
+        "### Step 5 - Write report\n\nRequired input must already exist.\n"
+        "File `config.md` in current working directory:\n",
+        "Required input\u2028### Step 5 - Write report\n\n"
+        "File `config.md` in current working directory:\n",
+        "Required input\u0085### Step 5 - Write report\n\n"
+        "File `config.md` in current working directory:\n",
+        "Required input\v### Step 5 - Write report\n\n"
+        "File `config.md` in current working directory:\n",
+        "<div>\n### Step 5 - Write report\n\n"
+        "File `config.md` in current working directory:\n",
+    ],
+)
+def test_file_clause_does_not_inherit_hidden_or_interrupted_heading(
+    tmp_path: Path, body: str
+) -> None:
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert any(
+        row["status"] == "missing" and "config.md" in row["evidence"] for row in result.records
+    )
+
+
+@pytest.mark.parametrize("prefix", ["    ", "Required input: "])
+def test_file_clause_rejects_window_clipped_heading(tmp_path: Path, prefix: str) -> None:
+    heading = "### Step 5 - Write report"
+    body = prefix + heading + "\n"
+    body += "\n" * (384 - len(heading) - 1)
+    body += "File `config.md` in current working directory:\n"
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert any(
+        row["status"] == "missing" and "config.md" in row["evidence"] for row in result.records
+    )
+
+
+@pytest.mark.parametrize("indent", [" ", "  ", "   "])
+def test_file_clause_accepts_markdown_heading_indentation(tmp_path: Path, indent: str) -> None:
+    body = indent + "### Step 5 - Write report\n\n"
+    body += "File `config.md` in current working directory:\n"
+    result = resolve(tmp_path, body)
+    assert result.complete
+    assert not [row for row in result.records if row["status"] == "missing"]
+
+
+def test_leading_bom_exemption_preserves_embedded_zero_width() -> None:
+    """Only the UTF-8 BOM at the start may be excluded from P2."""
+    from skillspector.nodes.analyzers.static_patterns_prompt_injection import (
+        _ZERO_WIDTH_PATTERN,
+        _p2_pattern_matches,
+    )
+
+    def positions(content: str) -> list[int]:
+        return [match.start() for match in _p2_pattern_matches(content, _ZERO_WIDTH_PATTERN)]
+
+    assert positions("\ufeff# README\n") == []
+    embedded_bom = "# Heading\ntext\ufeffhidden"
+    embedded_zero_width = "# Heading\ntext\u200bhidden"
+    assert positions(embedded_bom) == [embedded_bom.index("\ufeff")]
+    assert positions(embedded_zero_width) == [embedded_zero_width.index("\u200b")]
